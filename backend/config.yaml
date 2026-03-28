@@ -1,0 +1,22 @@
+version: 1
+title: Dashboard
+layout:
+    widthMode: preset
+    maxWidth: 1200
+appLayout:
+    size: medium
+appearance:
+    accent: '#3bf73e'
+    background: '#0F1115'
+panes:
+    - id: pane-1
+      label: My Apps
+      position: 0,0
+      appColumns: 5
+      appRows: 3
+      apps:
+        - id: drive
+          name: Google Drive
+          position: 1,0
+          url: https://drive.google.com
+          icon: google-drive
