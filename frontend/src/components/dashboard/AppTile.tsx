@@ -1,6 +1,8 @@
+import { useEffect, useState } from 'react'
 import type React from 'react'
 import type { AppItem } from '../../features/config/types'
 import type { LayoutTokens } from '../../features/layout/paneMath'
+import { selfhstIconSvgUrl } from '../../features/icons/selfhst'
 
 const tileClassName =
   'absolute rounded-xl border bg-white/5 backdrop-blur transition-colors hover:bg-white/10'
@@ -17,6 +19,11 @@ export default function AppTile(props: {
   isSwapTarget?: boolean
 }) {
   const { app, tokens, left, top } = props
+  const [iconFailed, setIconFailed] = useState(false)
+
+  useEffect(() => {
+    setIconFailed(false)
+  }, [app.icon])
 
   const isExternal = Boolean(app.openInNewTab)
   const style: React.CSSProperties = {
@@ -28,9 +35,28 @@ export default function AppTile(props: {
     opacity: props.isDragged ? 0.25 : 1,
   }
 
-  const label = (
-    <div className="flex h-full w-full items-center justify-center px-1 text-[11px] text-white/80">
-      <span className="line-clamp-2 text-center">{app.name}</span>
+  const iconUrl = app.icon.trim() ? selfhstIconSvgUrl(app.icon) : null
+  const showIcon = Boolean(iconUrl && !iconFailed)
+
+  const inner = (
+    <div className="flex h-full w-full flex-col items-center justify-center gap-1 px-1 pt-1">
+      {showIcon ? (
+        <img
+          src={iconUrl!}
+          alt=""
+          className="pointer-events-none h-[calc(100%-2.25rem)] max-h-10 w-full flex-1 object-contain"
+          draggable={false}
+          onError={() => setIconFailed(true)}
+        />
+      ) : null}
+      <div
+        className={[
+          'line-clamp-2 w-full text-center text-[11px] text-white/80',
+          showIcon ? 'leading-tight' : '',
+        ].join(' ')}
+      >
+        {app.name}
+      </div>
     </div>
   )
 
@@ -38,19 +64,21 @@ export default function AppTile(props: {
     return (
       <button
         type="button"
+        data-app-tile
         className={`${tileClassName} cursor-grab touch-none select-none appearance-none active:cursor-grabbing`}
         style={style}
         aria-label={app.name}
         title={app.name}
         onPointerDown={props.onPointerDown}
       >
-        {label}
+        {inner}
       </button>
     )
   }
 
   return (
     <a
+      data-app-tile
       href={app.url}
       target={isExternal ? '_blank' : undefined}
       rel={isExternal ? 'noopener noreferrer' : undefined}
@@ -61,7 +89,7 @@ export default function AppTile(props: {
       title={app.name}
       onPointerDown={props.onPointerDown}
     >
-      {label}
+      {inner}
     </a>
   )
 }

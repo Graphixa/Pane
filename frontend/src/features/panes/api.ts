@@ -1,8 +1,22 @@
-import type { DashboardConfig } from '../config/types'
+import type { DashboardConfig, PaneItem } from '../config/types'
 import { fetchWithTimeout } from '../../lib/fetchWithTimeout'
 import { throwIfNotOk } from '../../lib/httpError'
 
 const apiTimeoutMs = 15_000
+
+export async function createPane(pane: PaneItem): Promise<DashboardConfig> {
+  const res = await fetchWithTimeout(
+    '/api/panes',
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(pane),
+    },
+    apiTimeoutMs,
+  )
+  await throwIfNotOk(res)
+  return res.json() as Promise<DashboardConfig>
+}
 
 export async function updatePane(
   paneId: string,

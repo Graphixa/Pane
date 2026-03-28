@@ -1,22 +1,29 @@
 version: 1
-title: Dashboard
+title: My Server
 layout:
     widthMode: preset
-    maxWidth: 1200
+    maxWidth: 960
+    customWidth: 1520
 appLayout:
-    size: medium
+    size: small
 appearance:
-    accent: '#3bf73e'
-    background: '#0F1115'
+    accent: '#405dce'
+    background: '#16181d'
 panes:
     - id: pane-1
-      label: My Apps
-      position: 0,0
-      appColumns: 5
+      label: Cool Apps
+      position: 0,1
+      appColumns: 6
       appRows: 3
       apps:
         - id: drive
           name: Google Drive
-          position: 1,0
+          position: 2,0
           url: https://drive.google.com
           icon: google-drive
+        - id: app-fcee2b7b1b
+          name: Test
+          position: 0,1
+          url: https://test.com
+          icon: speedtest-light
+          openInNewTab: true

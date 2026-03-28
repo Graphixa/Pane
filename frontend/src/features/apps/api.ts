@@ -1,8 +1,22 @@
-import type { DashboardConfig } from '../config/types'
+import type { AppItem, DashboardConfig } from '../config/types'
 import { fetchWithTimeout } from '../../lib/fetchWithTimeout'
 import { throwIfNotOk } from '../../lib/httpError'
 
 const apiTimeoutMs = 15_000
+
+export async function createApp(paneId: string, app: AppItem): Promise<DashboardConfig> {
+  const res = await fetchWithTimeout(
+    `/api/panes/${paneId}/apps`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(app),
+    },
+    apiTimeoutMs,
+  )
+  await throwIfNotOk(res)
+  return res.json() as Promise<DashboardConfig>
+}
 
 export async function updateApp(
   paneId: string,

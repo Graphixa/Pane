@@ -179,13 +179,21 @@ export default function SettingsPanel(props: {
                       }}
                     />
                   </div>
-                  <div>
-                    <div className="mb-1 text-[11px] uppercase tracking-[0.22em] text-white/45">
-                      Custom width
+                  <div className={draft.layout.widthMode !== 'custom' ? 'opacity-50' : ''}>
+                    <div className="mb-1 flex items-baseline justify-between gap-2">
+                      <div className="text-[11px] uppercase tracking-[0.22em] text-white/45">
+                        Custom width
+                      </div>
+                      <div className="text-xs tabular-nums text-white/70">
+                        {draft.layout.customWidth ?? 1200}px
+                      </div>
                     </div>
                     <input
-                      type="number"
-                      className="w-full rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-white/90 outline-none focus:border-white/20 disabled:opacity-50"
+                      type="range"
+                      min={640}
+                      max={5000}
+                      step={20}
+                      className="mt-1 w-full accent-[#3B82F6] disabled:opacity-50"
                       value={draft.layout.customWidth ?? 1200}
                       disabled={draft.layout.widthMode !== 'custom'}
                       onChange={(e) => {
@@ -276,6 +284,18 @@ export default function SettingsPanel(props: {
                   <div className="mt-1 text-xs text-white/60">
                     Self-hosted dashboard. Config stored as YAML; UI derives layout deterministically.
                   </div>
+                </div>
+                <div className="rounded-xl border border-white/10 bg-white/5 p-4 text-xs text-white/60">
+                  App icons are loaded from the{' '}
+                  <a
+                    className="text-sky-300/90 underline decoration-white/15 underline-offset-2 hover:text-sky-200"
+                    href="https://github.com/selfhst/icons"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                  >
+                    selfhst/icons
+                  </a>{' '}
+                  collection (CC BY 4.0), served via jsDelivr.
                 </div>
               </section>
             ) : null}

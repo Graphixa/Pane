@@ -25,6 +25,7 @@ export default function DashboardGrid(props: {
   editMode: boolean
   onCommitConfig: (next: DashboardConfig) => Promise<void>
   onCommitConfigFromServer: (next: DashboardConfig) => Promise<void>
+  onRequestAddAppAt?: (paneId: string, col: number, row: number) => void
 }) {
   const [interaction, setInteraction] = useState<ActiveInteraction>({ type: 'none' })
   const [saveError, setSaveError] = useState<string | null>(null)
@@ -81,7 +82,6 @@ export default function DashboardGrid(props: {
     const metrics = getPaneMetrics(pane.appColumns, pane.appRows, tokens)
     setSaveError(null)
 
-    event.currentTarget.setPointerCapture(event.pointerId)
     setInteraction({
       type: 'pane-drag',
       paneId: pane.id,
@@ -253,6 +253,22 @@ export default function DashboardGrid(props: {
     await props.onCommitConfigFromServer(fromServer)
   }
 
+  async function renamePane(paneId: string, label: string) {
+    setSaveError(null)
+    const next = {
+      ...props.config,
+      panes: props.config.panes.map((p) => (p.id === paneId ? { ...p, label } : p)),
+    }
+    try {
+      await props.onCommitConfig(next)
+      const fromServer = await apiUpdatePane(paneId, { label })
+      await props.onCommitConfigFromServer(fromServer)
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : String(error)
+      setSaveError(msg)
+    }
+  }
+
   async function onPointerMove(event: React.PointerEvent<HTMLDivElement>) {
     if (interaction.type === 'none') return
     if (event.pointerId !== interaction.session.pointerId) return
@@ -408,6 +424,8 @@ repeating-linear-gradient(90deg, rgba(255,255,255,0.06) 0 1px, transparent 1px $
           onAppDragStart={onAppDragStart}
           onDeletePane={deletePane}
           onDeleteApp={deleteApp}
+          onRenamePane={renamePane}
+          onRequestAddAppAt={props.onRequestAddAppAt}
           dragState={
             interaction.type === 'pane-drag' && interaction.paneId === pane.id
               ? { active: true, validDrop: interaction.validDrop }
