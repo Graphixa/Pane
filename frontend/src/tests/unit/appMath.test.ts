@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest'
 
-import { moveOrSwapApps } from '../../features/apps/appMath'
+import {
+  appsLinearIndicesFitNewGrid,
+  moveOrSwapApps,
+  remapAppPositionsForGridResize,
+} from '../../features/apps/appMath'
 import type { AppItem } from '../../features/config/types'
 
 describe('features/apps/appMath', () => {
@@ -29,6 +33,24 @@ describe('features/apps/appMath', () => {
     expect(res.collidedAppId).toBe('b')
     expect(res.apps.find((x) => x.id === 'a')?.position).toBe('1,0')
     expect(res.apps.find((x) => x.id === 'b')?.position).toBe('0,0')
+  })
+
+  it('remapAppPositionsForGridResize preserves linear reading order (iOS-style)', () => {
+    const apps = [
+      { id: 'a', name: 'A', position: '0,0', url: 'x', icon: 'i' },
+      { id: 'b', name: 'B', position: '1,0', url: 'x', icon: 'i' },
+      { id: 'c', name: 'C', position: '5,0', url: 'x', icon: 'i' },
+    ]
+    const next = remapAppPositionsForGridResize(apps, 6, 3, 3)
+    expect(next.find((x) => x.id === 'a')?.position).toBe('0,0')
+    expect(next.find((x) => x.id === 'b')?.position).toBe('1,0')
+    expect(next.find((x) => x.id === 'c')?.position).toBe('2,1')
+  })
+
+  it('appsLinearIndicesFitNewGrid rejects when an icon would fall off the new grid', () => {
+    const apps = [{ id: 'a', name: 'A', position: '5,0', url: 'x', icon: 'i' }]
+    expect(appsLinearIndicesFitNewGrid(apps, 6, 3, 1)).toBe(false)
+    expect(appsLinearIndicesFitNewGrid(apps, 6, 3, 3)).toBe(true)
   })
 })
 

@@ -43,6 +43,8 @@ export type ActiveInteraction =
       // contentRect is in viewport/client coordinates.
       contentRectLeft: number
       contentRectTop: number
+      pickupOffsetX: number
+      pickupOffsetY: number
       appColumns: number
       appRows: number
       startCol: number

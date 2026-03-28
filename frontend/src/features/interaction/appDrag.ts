@@ -7,19 +7,24 @@ export function getAppDragPreview(params: {
   pointerY: number
   contentRectLeft: number
   contentRectTop: number
-  tileStep: number
+  appColStep: number
+  appRowStep: number
+  gridInsetX: number
+  gridInsetY: number
   appColumns: number
   appRows: number
 }): { previewCol: number; previewRow: number } {
   const localX = params.pointerX - params.contentRectLeft
   const localY = params.pointerY - params.contentRectTop
 
-  const rawCol = Math.round(localX / params.tileStep)
-  const rawRow = Math.round(localY / params.tileStep)
+  const adjX = localX - params.gridInsetX
+  const adjY = localY - params.gridInsetY
+
+  const rawCol = Math.round(adjX / params.appColStep)
+  const rawRow = Math.round(adjY / params.appRowStep)
 
   return {
     previewCol: clamp(0, rawCol, params.appColumns - 1),
     previewRow: clamp(0, rawRow, params.appRows - 1),
   }
 }
-

@@ -24,7 +24,7 @@ func DefaultConfig() DashboardConfig {
 				Label:      "My Apps",
 				Position:   "0,0",
 				AppColumns: 3,
-				AppRows:    2,
+				AppRows:    1,
 				Apps: []AppConfig{
 					{
 						ID:       "drive",

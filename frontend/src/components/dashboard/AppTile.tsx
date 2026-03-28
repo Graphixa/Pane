@@ -4,8 +4,8 @@ import type { AppItem } from '../../features/config/types'
 import type { LayoutTokens } from '../../features/layout/paneMath'
 import { selfhstIconSvgUrl } from '../../features/icons/selfhst'
 
-const tileClassName =
-  'absolute rounded-xl border bg-white/5 backdrop-blur transition-colors hover:bg-white/10'
+const iconShellClass =
+  'flex shrink-0 items-center justify-center rounded-xl border bg-white/5 backdrop-blur transition-colors hover:bg-white/10'
 
 export default function AppTile(props: {
   app: AppItem
@@ -26,70 +26,99 @@ export default function AppTile(props: {
   }, [app.icon])
 
   const isExternal = Boolean(app.openInNewTab)
-  const style: React.CSSProperties = {
-    left,
-    top,
-    width: tokens.tileSize,
-    height: tokens.tileSize,
-    borderColor: props.isSwapTarget ? 'rgba(250,204,21,0.9)' : 'rgba(255,255,255,0.1)',
-    opacity: props.isDragged ? 0.25 : 1,
-  }
+  const borderColor = props.isSwapTarget ? 'rgba(250,204,21,0.9)' : 'rgba(255,255,255,0.1)'
+  const dim = props.isDragged ? 0.08 : 1
 
   const iconUrl = app.icon.trim() ? selfhstIconSvgUrl(app.icon) : null
   const showIcon = Boolean(iconUrl && !iconFailed)
 
-  const inner = (
-    <div className="flex h-full w-full flex-col items-center justify-center gap-1 px-1 pt-1">
-      {showIcon ? (
-        <img
-          src={iconUrl!}
-          alt=""
-          className="pointer-events-none h-[calc(100%-2.25rem)] max-h-10 w-full flex-1 object-contain"
-          draggable={false}
-          onError={() => setIconFailed(true)}
-        />
-      ) : null}
-      <div
-        className={[
-          'line-clamp-2 w-full text-center text-[11px] text-white/80',
-          showIcon ? 'leading-tight' : '',
-        ].join(' ')}
-      >
-        {app.name}
-      </div>
+  const iconInner = showIcon ? (
+    <img
+      src={iconUrl!}
+      alt=""
+      className="pointer-events-none object-contain"
+      style={{
+        width: Math.max(0, tokens.tileSize - 8),
+        height: Math.max(0, tokens.tileSize - 8),
+      }}
+      draggable={false}
+      onError={() => setIconFailed(true)}
+    />
+  ) : null
+
+  const label = (
+    <div
+      className={[
+        'mt-0 w-full text-center text-[10px] leading-snug text-white/75 line-clamp-2',
+        props.disableLink ? 'pointer-events-none select-none' : '',
+      ]
+        .filter(Boolean)
+        .join(' ')}
+      style={{ marginTop: tokens.iconLabelGap, minHeight: tokens.labelBandHeight }}
+    >
+      {app.name}
     </div>
   )
 
   if (props.disableLink) {
     return (
-      <button
-        type="button"
-        data-app-tile
-        className={`${tileClassName} cursor-grab touch-none select-none appearance-none active:cursor-grabbing`}
-        style={style}
-        aria-label={app.name}
-        title={app.name}
-        onPointerDown={props.onPointerDown}
+      <div
+        className="absolute"
+        style={{
+          left,
+          top,
+          width: tokens.tileSize,
+          opacity: dim,
+        }}
       >
-        {inner}
-      </button>
+        <button
+          type="button"
+          data-app-tile
+          className={`${iconShellClass} cursor-grab touch-none select-none appearance-none active:cursor-grabbing`}
+          style={{
+            width: tokens.tileSize,
+            height: tokens.tileSize,
+            borderColor,
+          }}
+          aria-label={app.name}
+          title={app.name}
+          onPointerDown={props.onPointerDown}
+        >
+          {iconInner}
+        </button>
+        {label}
+      </div>
     )
   }
 
   return (
     <a
-      data-app-tile
+      className="absolute block text-left no-underline"
       href={app.url}
       target={isExternal ? '_blank' : undefined}
       rel={isExternal ? 'noopener noreferrer' : undefined}
       draggable={false}
-      className={tileClassName}
-      style={style}
+      style={{
+        left,
+        top,
+        width: tokens.tileSize,
+        opacity: dim,
+      }}
       aria-label={app.name}
       title={app.name}
       onPointerDown={props.onPointerDown}
     >
-      {inner}
+      <div
+        className={iconShellClass}
+        style={{
+          width: tokens.tileSize,
+          height: tokens.tileSize,
+          borderColor,
+        }}
+      >
+        {iconInner}
+      </div>
+      {label}
     </a>
   )
 }

@@ -1,7 +1,15 @@
 import { useMemo, useState } from 'react'
 import type React from 'react'
 import type { DashboardConfig, PaneItem } from '../../features/config/types'
-import { getLayoutTokens, getPaneMetrics } from '../../features/layout/paneMath'
+import {
+  getAppColPitch,
+  getAppColPitchDistributed,
+  getAppRowPitch,
+  getLayoutTokens,
+  getPaneInnerContentWidth,
+  getPaneMetrics,
+  getPanePlacementSteps,
+} from '../../features/layout/paneMath'
 import type { ActiveInteraction } from '../../features/interaction/dragTypes'
 import { createPointerSession, updatePointerSession } from '../../features/interaction/pointerSession'
 import { getPaneDragPreview } from '../../features/interaction/paneDrag'
@@ -12,12 +20,16 @@ import { formatCoordPair, parseCoordPair } from '../../lib/coords'
 import PaneCard from './PaneCard'
 import { updatePane as apiUpdatePane, deletePane as apiDeletePane } from '../../features/panes/api'
 import { updateApp as apiUpdateApp, deleteApp as apiDeleteApp } from '../../features/apps/api'
-import { moveOrSwapApps } from '../../features/apps/appMath'
+import {
+  appsLinearIndicesFitNewGrid,
+  moveOrSwapApps,
+  remapAppPositionsForGridResize,
+} from '../../features/apps/appMath'
 
 function getPaneOrigin(pane: PaneItem, tokens: ReturnType<typeof getLayoutTokens>) {
   const [x, y] = parseCoordPair(pane.position)
-  const step = tokens.paneCellSize + tokens.paneGap
-  return { paneLeft: x * step, paneTop: y * step }
+  const { stepX, stepY } = getPanePlacementSteps(tokens)
+  return { paneLeft: x * stepX, paneTop: y * stepY }
 }
 
 export default function DashboardGrid(props: {
@@ -34,7 +46,9 @@ export default function DashboardGrid(props: {
     () => getLayoutTokens(props.config.appLayout.size),
     [props.config.appLayout.size],
   )
-  const step = tokens.paneCellSize + tokens.paneGap
+  const { stepX, stepY } = getPanePlacementSteps(tokens)
+  const resizeColStep = getAppColPitch(tokens)
+  const appRowPitch = getAppRowPitch(tokens)
 
   const { panes, height, width } = useMemo(() => {
     const panesWithMetrics = props.config.panes.map((pane) => {
@@ -62,19 +76,17 @@ export default function DashboardGrid(props: {
     })
 
     const nextHeight = panesWithMetrics.reduce(
-      (acc, p) => Math.max(acc, p.paneTop + p.metrics.paneHeight),
+      (acc, p) => Math.max(acc, p.paneTop + p.metrics.renderPaneHeight),
       0,
     )
     const nextWidth = panesWithMetrics.reduce(
-      (acc, p) => Math.max(acc, p.paneLeft + p.metrics.paneWidth),
+      (acc, p) => Math.max(acc, p.paneLeft + p.metrics.renderPaneWidth),
       0,
     )
 
     return { panes: panesWithMetrics, height: nextHeight, width: nextWidth }
   }, [interaction, props.config.panes, tokens])
 
-  const paneGridStep = tokens.paneCellSize + tokens.paneGap
-  const tileStep = tokens.tileSize + tokens.tileGap
 
   function onPaneDragStart(pane: PaneItem, event: React.PointerEvent<HTMLDivElement>) {
     if (!props.editMode) return
@@ -128,6 +140,7 @@ export default function DashboardGrid(props: {
     setSaveError(null)
 
     event.currentTarget.setPointerCapture(event.pointerId)
+    const tileRect = event.currentTarget.getBoundingClientRect()
     setInteraction({
       type: 'app-drag',
       paneId: pane.id,
@@ -135,6 +148,8 @@ export default function DashboardGrid(props: {
       session: createPointerSession(event.pointerId, { x: event.clientX, y: event.clientY }),
       contentRectLeft: contentRect.left,
       contentRectTop: contentRect.top,
+      pickupOffsetX: event.clientX - tileRect.left,
+      pickupOffsetY: event.clientY - tileRect.top,
       appColumns: pane.appColumns,
       appRows: pane.appRows,
       startCol,
@@ -170,24 +185,45 @@ export default function DashboardGrid(props: {
   ) {
     if (!interactionState.validDrop) return
 
+    const pane = props.config.panes.find((p) => p.id === interactionState.paneId)
+    if (!pane) return
+
+    const newCols = interactionState.previewColumns
+    const newRows = interactionState.previewRows
+    const dimsChanged = newCols !== pane.appColumns || newRows !== pane.appRows
+    const nextApps = dimsChanged
+      ? remapAppPositionsForGridResize(pane.apps, pane.appColumns, newCols, newRows)
+      : pane.apps
+
     const next = {
       ...props.config,
-      panes: props.config.panes.map((pane) =>
-        pane.id === interactionState.paneId
+      panes: props.config.panes.map((p) =>
+        p.id === interactionState.paneId
           ? {
-              ...pane,
-              appColumns: interactionState.previewColumns,
-              appRows: interactionState.previewRows,
+              ...p,
+              appColumns: newCols,
+              appRows: newRows,
+              apps: nextApps,
             }
-          : pane,
+          : p,
       ),
     }
     await props.onCommitConfig(next)
-    const fromServer = await apiUpdatePane(interactionState.paneId, {
-      appColumns: interactionState.previewColumns,
-      appRows: interactionState.previewRows,
+
+    let merged = await apiUpdatePane(interactionState.paneId, {
+      appColumns: newCols,
+      appRows: newRows,
     })
-    await props.onCommitConfigFromServer(fromServer)
+
+    const moved = nextApps.filter((a) => {
+      const prev = pane.apps.find((x) => x.id === a.id)
+      return prev && prev.position !== a.position
+    })
+    for (const app of moved) {
+      merged = await apiUpdateApp(interactionState.paneId, app.id, { position: app.position })
+    }
+
+    await props.onCommitConfigFromServer(merged)
   }
 
   async function commitAppDrag(
@@ -283,7 +319,8 @@ export default function DashboardGrid(props: {
         interaction.startGridY,
         session.delta.x,
         session.delta.y,
-        paneGridStep,
+        stepX,
+        stepY,
       )
       const validDrop = isValidPanePlacement({
         panes: props.config.panes,
@@ -309,12 +346,26 @@ export default function DashboardGrid(props: {
         y: event.clientY,
       })
 
+      const dragPane = props.config.panes.find((p) => p.id === interaction.paneId)
+      const dragMetrics = dragPane
+        ? getPaneMetrics(dragPane.appColumns, dragPane.appRows, tokens)
+        : null
+      const dragInnerW = dragMetrics
+        ? getPaneInnerContentWidth(dragMetrics.renderPaneWidth, tokens)
+        : 0
+      const appColStepDistributed = dragPane
+        ? getAppColPitchDistributed(tokens, dragPane.appColumns, dragInnerW)
+        : resizeColStep
+
       const preview = getAppDragPreview({
         pointerX: session.current.x,
         pointerY: session.current.y,
         contentRectLeft: interaction.contentRectLeft,
         contentRectTop: interaction.contentRectTop,
-        tileStep,
+        appColStep: appColStepDistributed,
+        appRowStep: appRowPitch,
+        gridInsetX: tokens.gridInsetX,
+        gridInsetY: tokens.gridInsetY,
         appColumns: interaction.appColumns,
         appRows: interaction.appRows,
       })
@@ -345,15 +396,26 @@ export default function DashboardGrid(props: {
       interaction.startRows,
       session.delta.x,
       session.delta.y,
-      tileStep,
+      resizeColStep,
+      appRowPitch,
     )
-    const validDrop = isValidPanePlacement({
-      panes: props.config.panes,
-      appSize: props.config.appLayout.size,
-      paneId: interaction.paneId,
-      appColumns: preview.previewColumns,
-      appRows: preview.previewRows,
-    })
+    const resizingPane = props.config.panes.find((p) => p.id === interaction.paneId)
+    const appsFit =
+      resizingPane &&
+      appsLinearIndicesFitNewGrid(
+        resizingPane.apps,
+        resizingPane.appColumns,
+        preview.previewColumns,
+        preview.previewRows,
+      )
+    const validDrop =
+      isValidPanePlacement({
+        panes: props.config.panes,
+        appSize: props.config.appLayout.size,
+        paneId: interaction.paneId,
+        appColumns: preview.previewColumns,
+        appRows: preview.previewRows,
+      }) && Boolean(appsFit)
 
     setInteraction({
       ...interaction,
@@ -389,8 +451,8 @@ export default function DashboardGrid(props: {
     <div
       className="relative h-full w-full overflow-auto"
       style={{
-        minHeight: height + step,
-        minWidth: width + step,
+        minHeight: height + stepY,
+        minWidth: width + stepX,
       }}
       onPointerMove={onPointerMove}
       onPointerUp={onPointerEnd}
@@ -400,8 +462,8 @@ export default function DashboardGrid(props: {
         <div
           className="pointer-events-none absolute inset-0 opacity-70"
           style={{
-            backgroundImage: `repeating-linear-gradient(0deg, rgba(255,255,255,0.06) 0 1px, transparent 1px ${paneGridStep}px),
-repeating-linear-gradient(90deg, rgba(255,255,255,0.06) 0 1px, transparent 1px ${paneGridStep}px)`,
+            backgroundImage: `repeating-linear-gradient(0deg, rgba(255,255,255,0.055) 0 1px, transparent 1px ${stepY}px),
+repeating-linear-gradient(90deg, rgba(255,255,255,0.055) 0 1px, transparent 1px ${stepX}px)`,
           }}
         />
       ) : null}
@@ -410,10 +472,17 @@ repeating-linear-gradient(90deg, rgba(255,255,255,0.06) 0 1px, transparent 1px $
           Failed to persist pane update: {saveError}
         </div>
       ) : null}
-      {panes.map(({ pane, paneLeft, paneTop, metrics }) => (
+      {panes.map(({ pane, paneLeft, paneTop, metrics }) => {
+        const isResizePreview =
+          interaction.type === 'pane-resize' && interaction.paneId === pane.id
+        const gridColumns = isResizePreview ? interaction.previewColumns : pane.appColumns
+        const gridRows = isResizePreview ? interaction.previewRows : pane.appRows
+        return (
         <PaneCard
           key={pane.id}
           pane={pane}
+          gridColumns={gridColumns}
+          gridRows={gridRows}
           tokens={tokens}
           paneLeft={paneLeft}
           paneTop={paneTop}
@@ -443,11 +512,16 @@ repeating-linear-gradient(90deg, rgba(255,255,255,0.06) 0 1px, transparent 1px $
                   previewCol: interaction.previewCol,
                   previewRow: interaction.previewRow,
                   collidedAppId: interaction.collidedAppId,
+                  clientX: interaction.session.current.x,
+                  clientY: interaction.session.current.y,
+                  pickupOffsetX: interaction.pickupOffsetX,
+                  pickupOffsetY: interaction.pickupOffsetY,
                 }
               : undefined
           }
         />
-      ))}
+        )
+      })}
     </div>
   )
 }

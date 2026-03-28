@@ -1,12 +1,80 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import type React from 'react'
 import type { AppItem, PaneItem } from '../../features/config/types'
-import { getAppRenderPosition } from '../../features/layout/paneMath'
+import { selfhstIconSvgUrl } from '../../features/icons/selfhst'
+import {
+  getAppColPitchDistributed,
+  getAppRowPitch,
+  getPaneInnerContentWidth,
+} from '../../features/layout/paneMath'
 import type { LayoutTokens, PaneMetrics } from '../../features/layout/paneMath'
 import { parseCoordPair } from '../../lib/coords'
 import { shouldIgnorePaneDragTarget } from '../../lib/paneDragTarget'
 
 import AppTile from './AppTile'
+
+const floatIconShellClass =
+  'flex shrink-0 items-center justify-center rounded-xl border border-white/20 bg-white/10 shadow-[0_12px_28px_rgba(0,0,0,0.35)] backdrop-blur'
+
+function FloatingAppDragPreview(props: {
+  app: AppItem
+  tokens: LayoutTokens
+  clientX: number
+  clientY: number
+  pickupOffsetX: number
+  pickupOffsetY: number
+}) {
+  const { app, tokens } = props
+  const [iconFailed, setIconFailed] = useState(false)
+
+  useEffect(() => {
+    setIconFailed(false)
+  }, [app.icon])
+
+  const iconUrl = app.icon.trim() ? selfhstIconSvgUrl(app.icon) : null
+  const showIcon = Boolean(iconUrl && !iconFailed)
+
+  return createPortal(
+    <div
+      className="pointer-events-none fixed z-[200]"
+      style={{
+        left: props.clientX - props.pickupOffsetX,
+        top: props.clientY - props.pickupOffsetY,
+        width: tokens.tileSize,
+      }}
+    >
+      <div
+        className={floatIconShellClass}
+        style={{
+          width: tokens.tileSize,
+          height: tokens.tileSize,
+        }}
+      >
+        {showIcon ? (
+          <img
+            src={iconUrl!}
+            alt=""
+            className="pointer-events-none object-contain"
+            style={{
+              width: Math.max(0, tokens.tileSize - 8),
+              height: Math.max(0, tokens.tileSize - 8),
+            }}
+            draggable={false}
+            onError={() => setIconFailed(true)}
+          />
+        ) : null}
+      </div>
+      <div
+        className="mt-0 w-full text-center text-[10px] leading-snug text-white/85 line-clamp-2 drop-shadow-[0_1px_2px_rgba(0,0,0,0.8)]"
+        style={{ marginTop: tokens.iconLabelGap, minHeight: tokens.labelBandHeight }}
+      >
+        {app.name}
+      </div>
+    </div>,
+    document.body,
+  )
+}
 
 function DragGripIcon() {
   return (
@@ -23,6 +91,9 @@ function DragGripIcon() {
 
 export default function PaneCard(props: {
   pane: PaneItem
+  /** Live grid size (e.g. while resizing); placeholders and pitches follow this. */
+  gridColumns: number
+  gridRows: number
   tokens: LayoutTokens
   paneLeft: number
   paneTop: number
@@ -46,7 +117,16 @@ export default function PaneCard(props: {
   onRequestAddAppAt?: (paneId: string, col: number, row: number) => void
   dragState?: { active: boolean; validDrop: boolean }
   resizeState?: { active: boolean; validDrop: boolean }
-  appDragState?: { appId: string; previewCol: number; previewRow: number; collidedAppId?: string }
+  appDragState?: {
+    appId: string
+    previewCol: number
+    previewRow: number
+    collidedAppId?: string
+    clientX: number
+    clientY: number
+    pickupOffsetX: number
+    pickupOffsetY: number
+  }
 }) {
   const { pane, tokens, paneLeft, paneTop, metrics } = props
   const isActive = Boolean(props.dragState?.active || props.resizeState?.active)
@@ -63,12 +143,11 @@ export default function PaneCard(props: {
 
   const appDrag = props.appDragState
   const draggedApp = appDrag ? pane.apps.find((a) => a.id === appDrag.appId) : undefined
-  const previewPositionByAppId = useMemo(() => {
-    if (!appDrag) return null
-    return new Map([[appDrag.appId, { col: appDrag.previewCol, row: appDrag.previewRow }]])
-  }, [appDrag])
+  const { gridColumns, gridRows } = props
 
-  const tileStep = tokens.tileSize + tokens.tileGap
+  const innerContentW = getPaneInnerContentWidth(metrics.renderPaneWidth, tokens)
+  const colPitch = getAppColPitchDistributed(tokens, gridColumns, innerContentW)
+  const rowPitch = getAppRowPitch(tokens)
 
   function onPanePointerDown(event: React.PointerEvent<HTMLDivElement>) {
     if (!props.editMode) return
@@ -88,8 +167,8 @@ export default function PaneCard(props: {
   const emptySlots = useMemo(() => {
     if (!props.editMode) return []
     const slots: Array<{ col: number; row: number }> = []
-    for (let row = 0; row < pane.appRows; row++) {
-      for (let col = 0; col < pane.appColumns; col++) {
+    for (let row = 0; row < gridRows; row++) {
+      for (let col = 0; col < gridColumns; col++) {
         const pos = `${col},${row}`
         if (!pane.apps.some((a) => a.position === pos)) {
           slots.push({ col, row })
@@ -97,7 +176,7 @@ export default function PaneCard(props: {
       }
     }
     return slots
-  }, [props.editMode, pane.appRows, pane.appColumns, pane.apps])
+  }, [props.editMode, gridRows, gridColumns, pane.apps])
 
   return (
     <div
@@ -106,8 +185,8 @@ export default function PaneCard(props: {
       style={{
         left: paneLeft,
         top: paneTop,
-        width: metrics.paneWidth,
-        height: metrics.paneHeight,
+        width: metrics.renderPaneWidth,
+        height: metrics.renderPaneHeight,
         borderColor: isInvalid ? 'rgba(248,113,113,0.8)' : 'rgba(255,255,255,0.1)',
         opacity: isActive ? 0.9 : 1,
         boxShadow: isActive
@@ -116,12 +195,12 @@ export default function PaneCard(props: {
       }}
       onPointerDown={onPanePointerDown}
     >
-      <div
-        className="relative flex min-h-0 items-center px-4 text-xs text-white/80"
-        style={{ height: tokens.headerHeight }}
-      >
-        <div className="min-w-0 flex-1 pr-12" data-pane-no-drag>
-          {props.editMode ? (
+      {props.editMode ? (
+        <div
+          className="relative grid w-full grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-1 px-2 text-xs text-white/80 sm:px-3"
+          style={{ height: tokens.headerHeight }}
+        >
+          <div className="min-w-0" data-pane-no-drag>
             <input
               className="w-full bg-transparent text-xs text-white/90 outline-none ring-0 placeholder:text-white/35 focus:border-b focus:border-white/20"
               value={labelEdit}
@@ -142,20 +221,14 @@ export default function PaneCard(props: {
                 if (e.key === 'Enter') (e.target as HTMLInputElement).blur()
               }}
             />
-          ) : (
-            <span className="block truncate">{pane.label}</span>
-          )}
-        </div>
-        {props.editMode ? (
+          </div>
           <div
-            className="pointer-events-none absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 text-white/40"
+            className="pointer-events-none relative z-10 flex shrink-0 justify-center text-white/45"
             aria-hidden
           >
             <DragGripIcon />
           </div>
-        ) : null}
-        {props.editMode ? (
-          <div className="ml-auto flex shrink-0 items-center gap-2" data-pane-no-drag>
+          <div className="flex min-w-0 justify-end" data-pane-no-drag>
             <button
               type="button"
               className="rounded-md border border-white/10 bg-white/5 px-2 py-1 text-[10px] tracking-wide text-white/70 hover:bg-white/10"
@@ -167,16 +240,23 @@ export default function PaneCard(props: {
               Delete
             </button>
           </div>
-        ) : null}
-      </div>
+        </div>
+      ) : (
+        <div
+          className="flex min-h-0 items-center px-3 text-xs text-white/80"
+          style={{ height: tokens.headerHeight }}
+        >
+          <span className="block min-w-0 truncate">{pane.label}</span>
+        </div>
+      )}
 
       <div
         ref={contentRef}
         className="relative"
         style={{
-          left: tokens.panePaddingLeft,
-          top: tokens.headerHeight + tokens.panePaddingTop,
-          width: metrics.contentWidth,
+          left: 0,
+          top: tokens.headerHeight,
+          width: metrics.renderPaneWidth,
           height: metrics.contentHeight,
           position: 'absolute',
         }}
@@ -185,16 +265,16 @@ export default function PaneCard(props: {
           <div
             className="pointer-events-none absolute inset-0 rounded-lg"
             style={{
-              backgroundImage: `repeating-linear-gradient(0deg, rgba(255,255,255,0.07) 0 1px, transparent 1px ${tokens.tileSize + tokens.tileGap}px),
-repeating-linear-gradient(90deg, rgba(255,255,255,0.07) 0 1px, transparent 1px ${tokens.tileSize + tokens.tileGap}px)`,
+              backgroundImage: `repeating-linear-gradient(0deg, rgba(255,255,255,0.07) 0 1px, transparent 1px ${rowPitch}px),
+repeating-linear-gradient(90deg, rgba(255,255,255,0.07) 0 1px, transparent 1px ${colPitch}px)`,
               opacity: 0.35,
             }}
           />
         ) : null}
 
         {emptySlots.map(({ col, row }) => {
-          const left = col * tileStep
-          const top = row * tileStep
+          const left = tokens.gridInsetX + col * colPitch
+          const top = tokens.gridInsetY + row * rowPitch
           return (
             <div
               key={`slot-${col}-${row}`}
@@ -227,11 +307,9 @@ repeating-linear-gradient(90deg, rgba(255,255,255,0.07) 0 1px, transparent 1px $
           const isDragged = appDrag?.appId === app.id
           const isSwapTarget = appDrag?.collidedAppId === app.id
 
-          const override = previewPositionByAppId?.get(app.id)
-          const [col, row] = override ? [override.col, override.row] : parseCoordPair(app.position)
-          const { x, y } = getAppRenderPosition(col, row, tokens, 0, 0)
-          const left = x - tokens.panePaddingLeft
-          const top = y - (tokens.headerHeight + tokens.panePaddingTop)
+          const [col, row] = parseCoordPair(app.position)
+          const left = tokens.gridInsetX + col * colPitch
+          const top = tokens.gridInsetY + row * rowPitch
 
           return (
             <AppTile
@@ -257,9 +335,10 @@ repeating-linear-gradient(90deg, rgba(255,255,255,0.07) 0 1px, transparent 1px $
         {props.editMode ? (
           <div className="pointer-events-none absolute inset-0">
             {pane.apps.map((app) => {
+              if (appDrag?.appId === app.id) return null
               const [col, row] = parseCoordPair(app.position)
-              const left = col * (tokens.tileSize + tokens.tileGap)
-              const top = row * (tokens.tileSize + tokens.tileGap)
+              const left = tokens.gridInsetX + col * colPitch
+              const top = tokens.gridInsetY + row * rowPitch
               return (
                 <button
                   key={`${app.id}-delete`}
@@ -282,19 +361,30 @@ repeating-linear-gradient(90deg, rgba(255,255,255,0.07) 0 1px, transparent 1px $
           </div>
         ) : null}
 
-        {draggedApp ? (
+        {draggedApp && appDrag ? (
           <div
-            className="pointer-events-none absolute rounded-xl border border-white/20 bg-white/10 backdrop-blur"
+            className="pointer-events-none absolute rounded-xl ring-2 ring-sky-400/75 ring-offset-0"
             style={{
-              left: appDrag!.previewCol * (tokens.tileSize + tokens.tileGap),
-              top: appDrag!.previewRow * (tokens.tileSize + tokens.tileGap),
+              left: tokens.gridInsetX + appDrag.previewCol * colPitch,
+              top: tokens.gridInsetY + appDrag.previewRow * rowPitch,
               width: tokens.tileSize,
               height: tokens.tileSize,
-              boxShadow: '0 12px 28px rgba(0,0,0,0.35)',
+              background: 'rgba(56,189,248,0.12)',
             }}
           />
         ) : null}
       </div>
+
+      {draggedApp && appDrag ? (
+        <FloatingAppDragPreview
+          app={draggedApp}
+          tokens={tokens}
+          clientX={appDrag.clientX}
+          clientY={appDrag.clientY}
+          pickupOffsetX={appDrag.pickupOffsetX}
+          pickupOffsetY={appDrag.pickupOffsetY}
+        />
+      ) : null}
 
       {props.editMode ? (
         <>

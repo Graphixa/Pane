@@ -69,14 +69,14 @@ ${bg}`,
     const id = `pane-${crypto.randomUUID().replace(/-/g, '').slice(0, 10)}`
     const pos = findNextPaneGridPosition(dashboard.panes, dashboard.appLayout.size, {
       appColumns: 3,
-      appRows: 2,
+      appRows: 1,
     })
     const newPane: PaneItem = {
       id,
       label,
       position: formatCoordPair(pos.x, pos.y),
       appColumns: 3,
-      appRows: 2,
+      appRows: 1,
       apps: [],
     }
     const previous = query.data
