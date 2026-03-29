@@ -72,7 +72,7 @@ Actionable tasks for centered canvas behavior, small-window handling, and mobile
 
 ## Phase 4 — Responsive tokens (medium effort)
 
-**Outcome:** Same logical grid uses smaller physical pixels on narrow screens, **reducing how often reflow is needed** and keeping wrapped layouts shorter. Still no horizontal scroll.
+**Outcome:** Same logical grid uses smaller physical pixels on narrow screens, **reducing how often reflow is needed** and keeping wrapped layouts shorter. Still no horizontal scroll **for reflow viewing** (Phase 7: edit may scroll the absolute grid).
 
 - [x] **4.1** **720px** canvas content width breakpoint (`NARROW_TOKEN_BREAKPOINT_PX`).
 - [x] **4.2** **`effectiveTileSize`**: `small` below breakpoint, else config size — **display + collision** in grid use this (non-persistent).
@@ -83,12 +83,20 @@ Actionable tasks for centered canvas behavior, small-window handling, and mobile
 
 ## Phase 5 — Wrap-down reflow (large, product milestone) — **primary narrow-viewport strategy**
 
-**Outcome:** When `availableWidth < contentWidth`, **recompute pane positions** (or a derived “presentation grid”) so panes **continue on the next row** instead of extending right. Vertical scroll only. This is the main mechanism that honors **no horizontal scroll**.
+**Outcome:** When `availableWidth < contentWidth`, **recompute pane positions** (or a derived “presentation grid”) so panes **continue on the next row** instead of extending right. **Read / non-edit path:** vertical scroll only; honors **no horizontal scroll**. **Edit path:** Phase 7 — skip this presentation and use scroll on the logical grid instead.
 
 - [x] **5.1** **Row-major** on logical grid `(y, then x)` via **`sortPanesForReflow`**.
 - [x] **5.2** **Ephemeral** layout only (`computeReflowRows` + flex rows); YAML unchanged.
 - [x] **5.3** Add-pane placement uses **effective tile size** from **`viewportLayout.ts`** (not raw config alone).
 - [x] **5.4** **Drag/resize/reorder disabled** when reflow active + amber **banner** in edit mode. **Superseded for UX by Phase 7** (edit should not stay on reflow when the user needs to arrange panes).
+
+---
+
+## Phase 6 — Polish & QA
+
+- [x] **6.1** **Safe areas:** dashboard shell (`Dashboard.tsx`) uses **`padding*`: `max(0px, env(safe-area-inset-*, 0px))`** on the outer `pane-grain` container.
+- [x] **6.2** **`min-h-0` / `flex-1`** on shell + main + canvas; shell **`minHeight: max(100%, 100dvh)`** for mobile viewport height.
+- [x] **6.3** **Regression (manual):** (1) desktop grid — pane drag, resize, app drag, settings save; (2) narrow / reflow — no horizontal scroll, wrapped order; (3) width modes preset/custom/full; (4) add pane on narrow canvas. **Phase 7:** (2) split — **viewing:** reflow, no horizontal scroll; **edit:** horizontal scroll inside canvas, **no** lock/banner. **Automated:** `reflowLayout`, `viewportLayout` unit tests.
 
 ---
 
@@ -110,14 +118,6 @@ Actionable tasks for centered canvas behavior, small-window handling, and mobile
 - [ ] **7.6** **Manual QA:** Wide sparse layout → shrink preset while **Done** (reflow OK) → **Edit** (scroll, drag pane, resize, app reorder) → **Done** (reflow again).
 
 **Non-goals (for this phase):** Enabling drag **during** reflow without a defined mapping from flex order ↔ grid; silent rewriting of `(x,y)` on resize.
-
----
-
-## Phase 6 — Polish & QA
-
-- [x] **6.1** **Safe areas:** dashboard shell (`Dashboard.tsx`) uses **`padding*`: `max(0px, env(safe-area-inset-*, 0px))`** on the outer `pane-grain` container.
-- [x] **6.2** **`min-h-0` / `flex-1`** on shell + main + canvas; shell **`minHeight: max(100%, 100dvh)`** for mobile viewport height.
-- [x] **6.3** **Regression (manual):** (1) desktop grid — pane drag, resize, app drag, settings save; (2) narrow / reflow — no horizontal scroll, wrapped order; (3) width modes preset/custom/full; (4) add pane on narrow canvas. **Phase 7:** (2) split — **viewing:** reflow, no horizontal scroll; **edit:** horizontal scroll inside canvas, **no** lock/banner. **Automated:** `reflowLayout`, `viewportLayout` unit tests.
 
 ---
 
