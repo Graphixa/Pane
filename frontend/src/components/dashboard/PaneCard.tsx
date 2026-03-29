@@ -98,7 +98,11 @@ export default function PaneCard(props: {
   paneLeft: number
   paneTop: number
   metrics: PaneMetrics
+  /** When true, pane participates in flex reflow rows (no absolute left/top). */
+  flowLayout?: boolean
   editMode: boolean
+  /** When true (wrapped/narrow layout), pane drag, resize, and app reorder are disabled. */
+  interactionLocked?: boolean
   onPaneDragStart: (pane: PaneItem, event: React.PointerEvent<HTMLDivElement>) => void
   onResizeStart: (
     pane: PaneItem,
@@ -150,7 +154,7 @@ export default function PaneCard(props: {
   const rowPitch = getAppRowPitch(tokens)
 
   function onPanePointerDown(event: React.PointerEvent<HTMLDivElement>) {
-    if (!props.editMode) return
+    if (!props.editMode || props.interactionLocked) return
     if (shouldIgnorePaneDragTarget(event.target)) return
     event.preventDefault()
     const root = rootRef.current
@@ -178,13 +182,14 @@ export default function PaneCard(props: {
     return slots
   }, [props.editMode, gridRows, gridColumns, pane.apps])
 
+  const flow = Boolean(props.flowLayout)
+
   return (
     <div
       ref={rootRef}
-      className="absolute rounded-2xl border bg-white/5 backdrop-blur transition-all"
+      className={`rounded-2xl border bg-white/5 backdrop-blur transition-all ${flow ? 'relative shrink-0' : 'absolute'}`}
       style={{
-        left: paneLeft,
-        top: paneTop,
+        ...(flow ? {} : { left: paneLeft, top: paneTop }),
         width: metrics.renderPaneWidth,
         height: metrics.renderPaneHeight,
         borderColor: isInvalid ? 'rgba(248,113,113,0.8)' : 'rgba(255,255,255,0.1)',
@@ -322,7 +327,7 @@ repeating-linear-gradient(90deg, rgba(255,255,255,0.07) 0 1px, transparent 1px $
               isDragged={isDragged}
               isSwapTarget={isSwapTarget}
               onPointerDown={(event) => {
-                if (!props.editMode) return
+                if (!props.editMode || props.interactionLocked) return
                 const el = contentRef.current
                 if (!el) return
                 event.preventDefault()
@@ -386,7 +391,7 @@ repeating-linear-gradient(90deg, rgba(255,255,255,0.07) 0 1px, transparent 1px $
         />
       ) : null}
 
-      {props.editMode ? (
+      {props.editMode && !props.interactionLocked ? (
         <>
           <button
             type="button"

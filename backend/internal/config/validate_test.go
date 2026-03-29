@@ -25,3 +25,21 @@ func TestValidateConfig_RejectsInvalidPaneColumns(t *testing.T) {
 	}
 }
 
+func TestValidateConfig_RejectsLayoutMaxWidthOutOfRange(t *testing.T) {
+	cfg := DefaultConfig()
+	bad := 5000
+	cfg.Layout.MaxWidth = &bad
+	if err := ValidateConfig(&cfg); err == nil {
+		t.Fatalf("expected error for maxWidth > %d", layoutMaxWidthMax)
+	}
+}
+
+func TestValidateConfig_RejectsLayoutCustomWidthOutOfRange(t *testing.T) {
+	cfg := DefaultConfig()
+	bad := 6000
+	cfg.Layout.CustomWidth = &bad
+	if err := ValidateConfig(&cfg); err == nil {
+		t.Fatalf("expected error for customWidth > %d", layoutCustomWidthMax)
+	}
+}
+

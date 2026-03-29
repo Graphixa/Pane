@@ -1,10 +1,12 @@
 import { useDashboardConfig } from '../../hooks/useDashboardConfig'
 
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { useElementWidth } from '../../hooks/useElementWidth'
 import { updateDashboardConfig } from '../../features/config/api'
 import { createApp } from '../../features/apps/api'
 import type { AppItem, DashboardConfig, PaneItem } from '../../features/config/types'
 import { findNextPaneGridPosition } from '../../features/layout/placement'
+import { getEffectiveTileSizeForCanvasWidth } from '../../features/layout/viewportLayout'
 import { createPane } from '../../features/panes/api'
 import { formatCoordPair } from '../../lib/coords'
 import DashboardGrid from './DashboardGrid'
@@ -26,6 +28,8 @@ export default function Dashboard(props: { initialConfig?: DashboardConfig }) {
     row: number
   } | null>(null)
   const addMenuRef = useRef<HTMLDivElement | null>(null)
+  const [canvasEl, setCanvasEl] = useState<HTMLDivElement | null>(null)
+  const canvasContentWidth = useElementWidth(canvasEl)
 
   useEffect(() => {
     if (!addMenuOpen) return
@@ -41,13 +45,18 @@ export default function Dashboard(props: { initialConfig?: DashboardConfig }) {
   const bg = cfg?.appearance?.background ?? '#0F1115'
   const accent = cfg?.appearance?.accent ?? '#3B82F6'
 
-  const bgStyle = useMemo(() => {
+  const shellStyle = useMemo(() => {
     return {
       background: `radial-gradient(1200px 700px at 20% 10%, rgba(59,130,246,0.22), transparent 60%),
 radial-gradient(900px 600px at 90% 20%, rgba(236,72,153,0.14), transparent 55%),
 radial-gradient(1000px 800px at 50% 100%, rgba(34,197,94,0.10), transparent 60%),
 linear-gradient(180deg, rgba(255,255,255,0.04), transparent 22%),
 ${bg}`,
+      minHeight: 'max(100%, 100dvh)',
+      paddingTop: 'max(0px, env(safe-area-inset-top, 0px))',
+      paddingLeft: 'max(0px, env(safe-area-inset-left, 0px))',
+      paddingRight: 'max(0px, env(safe-area-inset-right, 0px))',
+      paddingBottom: 'max(0px, env(safe-area-inset-bottom, 0px))',
     } satisfies React.CSSProperties
   }, [bg])
 
@@ -67,7 +76,11 @@ ${bg}`,
 
   async function handleAddPane(label: string) {
     const id = `pane-${crypto.randomUUID().replace(/-/g, '').slice(0, 10)}`
-    const pos = findNextPaneGridPosition(dashboard.panes, dashboard.appLayout.size, {
+    const placementTileSize = getEffectiveTileSizeForCanvasWidth(
+      canvasContentWidth,
+      dashboard.appLayout.size,
+    )
+    const pos = findNextPaneGridPosition(dashboard.panes, placementTileSize, {
       appColumns: 3,
       appRows: 1,
     })
@@ -128,9 +141,9 @@ ${bg}`,
   }
 
   return (
-    <div className="pane-grain h-full w-full text-white" style={bgStyle}>
-      <div className="flex h-full flex-col">
-        <header className="flex items-center justify-between px-5 py-4">
+    <div className="pane-grain flex h-full min-h-0 w-full flex-col text-white" style={shellStyle}>
+      <div className="flex min-h-0 h-full flex-1 flex-col">
+        <header className="flex items-center justify-between px-4 py-4">
           <div className="min-w-0">
             <div className="text-[11px] uppercase tracking-[0.22em] text-white/55">
               Pane
@@ -211,9 +224,10 @@ ${bg}`,
           </div>
         </header>
 
-        <main className="min-h-0 flex-1 px-4 pb-4">
+        <main className="flex min-h-0 flex-1 flex-col overflow-x-hidden px-4 pb-4">
           <div
-            className="h-full rounded-2xl border border-white/10 bg-black/10 backdrop-blur"
+            ref={setCanvasEl}
+            className="box-border h-full min-h-0 w-full max-w-full flex-1 overflow-x-hidden rounded-2xl border border-white/10 bg-black/10 backdrop-blur"
             style={{
               maxWidth:
                 cfg.layout.widthMode === 'full'
@@ -227,6 +241,7 @@ ${bg}`,
             <DashboardGrid
               config={cfg}
               editMode={editMode}
+              containerContentWidth={canvasContentWidth}
               onRequestAddAppAt={(paneId, col, row) => {
                 setAppModalPreset({ paneId, col, row })
                 setAppModalOpen(true)

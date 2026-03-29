@@ -2,8 +2,8 @@ version: 1
 title: My Server
 layout:
     widthMode: preset
-    maxWidth: 960
-    customWidth: 1520
+    maxWidth: 1440
+    customWidth: 960
 appLayout:
     size: medium
 appearance:
@@ -12,12 +12,12 @@ appearance:
 panes:
     - id: pane-312ad6b368
       label: New pane
-      position: 2,0
-      appColumns: 6
-      appRows: 1
+      position: 11,0
+      appColumns: 3
+      appRows: 2
       apps: []
     - id: pane-c9cf705a52
-      label: New pane
+      label: Main Tools
       position: 0,0
       appColumns: 6
       appRows: 2
@@ -30,7 +30,7 @@ panes:
           openInNewTab: true
         - id: app-93c53736e8
           name: Test
-          position: 2,0
+          position: 4,0
           url: https://test.com
           icon: speedtest-light
           openInNewTab: true
@@ -43,6 +43,12 @@ panes:
     - id: pane-8b3e31f018
       label: Pane 3
       position: 0,2
-      appColumns: 5
+      appColumns: 3
       appRows: 1
-      apps: []
+      apps:
+        - id: app-cfc6aa079f
+          name: Magic App
+          position: 1,0
+          url: https://magic.com
+          icon: magic
+          openInNewTab: true

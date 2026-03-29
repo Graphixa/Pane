@@ -18,6 +18,9 @@ func ValidateConfig(cfg *DashboardConfig) error {
 	if cfg.Title == "" {
 		return fmt.Errorf("%w: title is required", ErrValidation)
 	}
+	if err := validateLayout(cfg.Layout); err != nil {
+		return err
+	}
 	for i := range cfg.Panes {
 		p := &cfg.Panes[i]
 		if p.ID == "" {
@@ -54,6 +57,29 @@ func ValidateConfig(cfg *DashboardConfig) error {
 				// icon is required by the UI; allow empty for now to avoid hard failures.
 				// Later we can validate against the icon index.
 			}
+		}
+	}
+	return nil
+}
+
+const (
+	layoutWidthMin       = 640
+	layoutMaxWidthMax    = 4000
+	layoutCustomWidthMax = 5000
+)
+
+func validateLayout(l Layout) error {
+	if l.WidthMode != "" && l.WidthMode != WidthModePreset && l.WidthMode != WidthModeCustom && l.WidthMode != WidthModeFull {
+		return fmt.Errorf("%w: layout.widthMode must be preset, custom, or full", ErrValidation)
+	}
+	if l.MaxWidth != nil {
+		if *l.MaxWidth < layoutWidthMin || *l.MaxWidth > layoutMaxWidthMax {
+			return fmt.Errorf("%w: layout.maxWidth must be between %d and %d", ErrValidation, layoutWidthMin, layoutMaxWidthMax)
+		}
+	}
+	if l.CustomWidth != nil {
+		if *l.CustomWidth < layoutWidthMin || *l.CustomWidth > layoutCustomWidthMax {
+			return fmt.Errorf("%w: layout.customWidth must be between %d and %d", ErrValidation, layoutWidthMin, layoutCustomWidthMax)
 		}
 	}
 	return nil

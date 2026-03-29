@@ -1,6 +1,8 @@
 import { useMemo, useState } from 'react'
 import type React from 'react'
 import type { DashboardConfig, PaneItem } from '../../features/config/types'
+import { computeReflowRows, maxPaneRenderWidth } from '../../features/layout/reflowLayout'
+import { getEffectiveTileSizeForCanvasWidth } from '../../features/layout/viewportLayout'
 import {
   getAppColPitch,
   getAppColPitchDistributed,
@@ -10,6 +12,7 @@ import {
   getPaneMetrics,
   getPanePlacementSteps,
 } from '../../features/layout/paneMath'
+import type { PaneMetrics } from '../../features/layout/paneMath'
 import type { ActiveInteraction } from '../../features/interaction/dragTypes'
 import { createPointerSession, updatePointerSession } from '../../features/interaction/pointerSession'
 import { getPaneDragPreview } from '../../features/interaction/paneDrag'
@@ -35,6 +38,8 @@ function getPaneOrigin(pane: PaneItem, tokens: ReturnType<typeof getLayoutTokens
 export default function DashboardGrid(props: {
   config: DashboardConfig
   editMode: boolean
+  /** Measured inner width of the dashboard canvas (undefined until first layout). */
+  containerContentWidth?: number
   onCommitConfig: (next: DashboardConfig) => Promise<void>
   onCommitConfigFromServer: (next: DashboardConfig) => Promise<void>
   onRequestAddAppAt?: (paneId: string, col: number, row: number) => void
@@ -42,10 +47,16 @@ export default function DashboardGrid(props: {
   const [interaction, setInteraction] = useState<ActiveInteraction>({ type: 'none' })
   const [saveError, setSaveError] = useState<string | null>(null)
 
-  const tokens = useMemo(
-    () => getLayoutTokens(props.config.appLayout.size),
-    [props.config.appLayout.size],
+  const effectiveTileSize = useMemo(
+    () =>
+      getEffectiveTileSizeForCanvasWidth(
+        props.containerContentWidth,
+        props.config.appLayout.size,
+      ),
+    [props.containerContentWidth, props.config.appLayout.size],
   )
+
+  const tokens = useMemo(() => getLayoutTokens(effectiveTileSize), [effectiveTileSize])
   const { stepX, stepY } = getPanePlacementSteps(tokens)
   const resizeColStep = getAppColPitch(tokens)
   const appRowPitch = getAppRowPitch(tokens)
@@ -87,9 +98,27 @@ export default function DashboardGrid(props: {
     return { panes: panesWithMetrics, height: nextHeight, width: nextWidth }
   }, [interaction, props.config.panes, tokens])
 
+  const reflowLayout = useMemo(() => {
+    const cw = props.containerContentWidth
+    if (cw === undefined || cw <= 0) return null
+    if (width <= cw) return null
+    const entries = panes.map(({ pane, metrics }) => ({ pane, metrics }))
+    return computeReflowRows(entries, cw, tokens.paneGap)
+  }, [props.containerContentWidth, width, panes, tokens.paneGap])
+
+  const reflowScale = useMemo(() => {
+    const cw = props.containerContentWidth
+    if (!reflowLayout || cw === undefined || cw <= 0) return 1
+    const flat = reflowLayout.rows.flat()
+    const maxPane = maxPaneRenderWidth(flat.map((e) => ({ pane: e.pane, metrics: e.metrics })))
+    if (maxPane <= cw) return 1
+    return cw / maxPane
+  }, [reflowLayout, props.containerContentWidth])
+
+  const interactionLocked = Boolean(reflowLayout)
 
   function onPaneDragStart(pane: PaneItem, event: React.PointerEvent<HTMLDivElement>) {
-    if (!props.editMode) return
+    if (!props.editMode || interactionLocked) return
     const [startGridX, startGridY] = parseCoordPair(pane.position)
     const metrics = getPaneMetrics(pane.appColumns, pane.appRows, tokens)
     setSaveError(null)
@@ -113,7 +142,7 @@ export default function DashboardGrid(props: {
     edge: 'right' | 'bottom' | 'bottom-right',
     event: React.PointerEvent<HTMLButtonElement>,
   ) {
-    if (!props.editMode) return
+    if (!props.editMode || interactionLocked) return
     setSaveError(null)
     event.currentTarget.setPointerCapture(event.pointerId)
     setInteraction({
@@ -135,7 +164,7 @@ export default function DashboardGrid(props: {
     contentRect: DOMRect,
     event: React.PointerEvent<HTMLElement>,
   ) {
-    if (!props.editMode) return
+    if (!props.editMode || interactionLocked) return
     const [startCol, startRow] = parseCoordPair(app.position)
     setSaveError(null)
 
@@ -324,7 +353,7 @@ export default function DashboardGrid(props: {
       )
       const validDrop = isValidPanePlacement({
         panes: props.config.panes,
-        appSize: props.config.appLayout.size,
+        appSize: effectiveTileSize,
         paneId: interaction.paneId,
         x: preview.previewGridX,
         y: preview.previewGridY,
@@ -411,7 +440,7 @@ export default function DashboardGrid(props: {
     const validDrop =
       isValidPanePlacement({
         panes: props.config.panes,
-        appSize: props.config.appLayout.size,
+        appSize: effectiveTileSize,
         paneId: interaction.paneId,
         appColumns: preview.previewColumns,
         appRows: preview.previewRows,
@@ -446,19 +475,80 @@ export default function DashboardGrid(props: {
     }
   }
 
-  // Capacity-based deterministic positioning: panes are placed on logical steps.
+  function renderPaneCard(args: {
+    pane: PaneItem
+    paneLeft: number
+    paneTop: number
+    metrics: PaneMetrics
+    flowLayout?: boolean
+  }) {
+    const { pane, paneLeft, paneTop, metrics, flowLayout } = args
+    const isResizePreview =
+      interaction.type === 'pane-resize' && interaction.paneId === pane.id
+    const gridColumns = isResizePreview ? interaction.previewColumns : pane.appColumns
+    const gridRows = isResizePreview ? interaction.previewRows : pane.appRows
+    return (
+      <PaneCard
+        key={pane.id}
+        pane={pane}
+        gridColumns={gridColumns}
+        gridRows={gridRows}
+        tokens={tokens}
+        paneLeft={paneLeft}
+        paneTop={paneTop}
+        metrics={metrics}
+        flowLayout={flowLayout}
+        editMode={props.editMode}
+        interactionLocked={interactionLocked}
+        onPaneDragStart={onPaneDragStart}
+        onResizeStart={onResizeStart}
+        onAppDragStart={onAppDragStart}
+        onDeletePane={deletePane}
+        onDeleteApp={deleteApp}
+        onRenamePane={renamePane}
+        onRequestAddAppAt={props.onRequestAddAppAt}
+        dragState={
+          interaction.type === 'pane-drag' && interaction.paneId === pane.id
+            ? { active: true, validDrop: interaction.validDrop }
+            : undefined
+        }
+        resizeState={
+          interaction.type === 'pane-resize' && interaction.paneId === pane.id
+            ? { active: true, validDrop: interaction.validDrop }
+            : undefined
+        }
+        appDragState={
+          interaction.type === 'app-drag' && interaction.paneId === pane.id
+            ? {
+                appId: interaction.appId,
+                previewCol: interaction.previewCol,
+                previewRow: interaction.previewRow,
+                collidedAppId: interaction.collidedAppId,
+                clientX: interaction.session.current.x,
+                clientY: interaction.session.current.y,
+                pickupOffsetX: interaction.pickupOffsetX,
+                pickupOffsetY: interaction.pickupOffsetY,
+              }
+            : undefined
+        }
+      />
+    )
+  }
+
+  // Capacity-based deterministic positioning, or wrapped reflow (no horizontal scroll).
   return (
     <div
-      className="relative h-full w-full overflow-auto"
+      className="relative h-full min-h-0 w-full overflow-x-hidden overflow-y-auto"
       style={{
-        minHeight: height + stepY,
-        minWidth: width + stepX,
+        scrollbarGutter: 'stable',
+        minHeight: reflowLayout ? undefined : height + stepY,
+        minWidth: reflowLayout ? undefined : width + stepX,
       }}
       onPointerMove={onPointerMove}
       onPointerUp={onPointerEnd}
       onPointerCancel={onPointerEnd}
     >
-      {props.editMode ? (
+      {props.editMode && !reflowLayout ? (
         <div
           className="pointer-events-none absolute inset-0 opacity-70"
           style={{
@@ -472,56 +562,62 @@ repeating-linear-gradient(90deg, rgba(255,255,255,0.055) 0 1px, transparent 1px 
           Failed to persist pane update: {saveError}
         </div>
       ) : null}
-      {panes.map(({ pane, paneLeft, paneTop, metrics }) => {
-        const isResizePreview =
-          interaction.type === 'pane-resize' && interaction.paneId === pane.id
-        const gridColumns = isResizePreview ? interaction.previewColumns : pane.appColumns
-        const gridRows = isResizePreview ? interaction.previewRows : pane.appRows
-        return (
-        <PaneCard
-          key={pane.id}
-          pane={pane}
-          gridColumns={gridColumns}
-          gridRows={gridRows}
-          tokens={tokens}
-          paneLeft={paneLeft}
-          paneTop={paneTop}
-          metrics={metrics}
-          editMode={props.editMode}
-          onPaneDragStart={onPaneDragStart}
-          onResizeStart={onResizeStart}
-          onAppDragStart={onAppDragStart}
-          onDeletePane={deletePane}
-          onDeleteApp={deleteApp}
-          onRenamePane={renamePane}
-          onRequestAddAppAt={props.onRequestAddAppAt}
-          dragState={
-            interaction.type === 'pane-drag' && interaction.paneId === pane.id
-              ? { active: true, validDrop: interaction.validDrop }
-              : undefined
-          }
-          resizeState={
-            interaction.type === 'pane-resize' && interaction.paneId === pane.id
-              ? { active: true, validDrop: interaction.validDrop }
-              : undefined
-          }
-          appDragState={
-            interaction.type === 'app-drag' && interaction.paneId === pane.id
-              ? {
-                  appId: interaction.appId,
-                  previewCol: interaction.previewCol,
-                  previewRow: interaction.previewRow,
-                  collidedAppId: interaction.collidedAppId,
-                  clientX: interaction.session.current.x,
-                  clientY: interaction.session.current.y,
-                  pickupOffsetX: interaction.pickupOffsetX,
-                  pickupOffsetY: interaction.pickupOffsetY,
-                }
-              : undefined
-          }
-        />
+      {reflowLayout && props.editMode ? (
+        <div className="mb-2 rounded-lg border border-amber-400/25 bg-amber-500/10 px-3 py-2 text-[11px] leading-snug text-amber-100/90">
+          Layout is wrapped to fit this width — pane drag, resize, and app reorder are off until there is enough
+          horizontal space.
+        </div>
+      ) : null}
+      {reflowLayout ? (
+        <div
+          className="w-full overflow-x-hidden"
+          style={{
+            height: reflowLayout.contentHeight * reflowScale,
+            minHeight: reflowLayout.contentHeight * reflowScale,
+          }}
+        >
+          <div className="flex w-full justify-center overflow-x-hidden">
+            <div
+              className="relative shrink-0"
+              style={{
+                width: reflowLayout.contentWidth,
+                height: reflowLayout.contentHeight,
+                transform: reflowScale < 1 ? `scale(${reflowScale})` : undefined,
+                transformOrigin: 'top center',
+              }}
+            >
+              <div
+                className="flex w-full flex-col items-stretch"
+                style={{ gap: tokens.paneGap }}
+              >
+                {reflowLayout.rows.map((rowEntries, ri) => (
+                  <div
+                    key={ri}
+                    className="flex w-full flex-row flex-nowrap justify-center"
+                    style={{ gap: tokens.paneGap }}
+                  >
+                    {rowEntries.map((entry) => {
+                      const row = panes.find((r) => r.pane.id === entry.pane.id)
+                      if (!row) return null
+                      return renderPaneCard({
+                        pane: row.pane,
+                        metrics: row.metrics,
+                        paneLeft: 0,
+                        paneTop: 0,
+                        flowLayout: true,
+                      })
+                    })}
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : (
+        panes.map(({ pane, paneLeft, paneTop, metrics }) =>
+          renderPaneCard({ pane, paneLeft, paneTop, metrics }),
         )
-      })}
+      )}
     </div>
   )
 }
