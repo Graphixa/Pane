@@ -1,11 +1,16 @@
 import { useDashboardConfig } from '../../hooks/useDashboardConfig'
 
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { flushSync } from 'react-dom'
 import { useElementWidth } from '../../hooks/useElementWidth'
 import { updateDashboardConfig } from '../../features/config/api'
 import { createApp } from '../../features/apps/api'
-import type { AppItem, DashboardConfig, PaneItem } from '../../features/config/types'
+import type { AppItem, DashboardConfig, PaneItem, TileSizePreset } from '../../features/config/types'
+import { fixDashboardLayout } from '../../features/layout/fixDashboardLayout'
+// Pane reorg confirm happens inside SettingsPanel.
+import { evaluateNarrowPersistTriggers } from '../../features/layout/narrowLayoutPersist'
 import { findNextPaneGridPosition } from '../../features/layout/placement'
+import { needsDashboardReflow } from '../../features/layout/reflowPresentation'
 import { getEffectiveTileSizeForCanvasWidth } from '../../features/layout/viewportLayout'
 import { createPane } from '../../features/panes/api'
 import { formatCoordPair } from '../../lib/coords'
@@ -60,6 +65,73 @@ ${bg}`,
     } satisfies React.CSSProperties
   }, [bg])
 
+  const lastCanvasWidthBaselineRef = useRef<number | null>(null)
+  const lastEffectivePresetRef = useRef<TileSizePreset | null>(null)
+  const initialOverflowPackDoneRef = useRef(false)
+  const prevEditModeRef = useRef(editMode)
+
+  useLayoutEffect(() => {
+    if (!cfg || canvasContentWidth === undefined || canvasContentWidth <= 0) return
+
+    const effectiveTileSize = getEffectiveTileSizeForCanvasWidth(
+      canvasContentWidth,
+      cfg.appLayout.size,
+    )
+    const overflow = needsDashboardReflow(cfg, canvasContentWidth, effectiveTileSize)
+
+    if (!overflow) {
+      lastCanvasWidthBaselineRef.current = canvasContentWidth
+      lastEffectivePresetRef.current = effectiveTileSize
+      prevEditModeRef.current = editMode
+      return
+    }
+
+    const enteredEditWhileOverflow = editMode && !prevEditModeRef.current && overflow
+
+    const { shouldPack, markInitialOverflowHandled } = evaluateNarrowPersistTriggers({
+      needsReflow: overflow,
+      canvasWidth: canvasContentWidth,
+      effectivePreset: effectiveTileSize,
+      lastCanvasWidthBaseline: lastCanvasWidthBaselineRef.current,
+      lastEffectivePreset: lastEffectivePresetRef.current,
+      initialOverflowPackDone: initialOverflowPackDoneRef.current,
+      shrinkOnAnyWidthDecrease: editMode,
+    })
+
+    if (markInitialOverflowHandled) {
+      initialOverflowPackDoneRef.current = true
+    }
+
+    if (shouldPack || enteredEditWhileOverflow) {
+      const { config: next, changed } = fixDashboardLayout(
+        cfg,
+        canvasContentWidth,
+        effectiveTileSize,
+      )
+      if (changed) {
+        const previous = query.data
+        flushSync(() => {
+          query.mutate(next, { revalidate: false })
+        })
+        void (async () => {
+          try {
+            await updateDashboardConfig(next)
+          } catch {
+            if (previous) {
+              flushSync(() => {
+                query.mutate(previous, { revalidate: false })
+              })
+            }
+          }
+        })()
+      }
+    }
+
+    lastCanvasWidthBaselineRef.current = canvasContentWidth
+    lastEffectivePresetRef.current = effectiveTileSize
+    prevEditModeRef.current = editMode
+  }, [cfg, canvasContentWidth, editMode, query])
+
   if (query.error) {
     return (
       <div className="p-6 text-sm text-red-200">
@@ -80,10 +152,17 @@ ${bg}`,
       canvasContentWidth,
       dashboard.appLayout.size,
     )
-    const pos = findNextPaneGridPosition(dashboard.panes, placementTileSize, {
-      appColumns: 3,
-      appRows: 1,
-    })
+    const pos = findNextPaneGridPosition(
+      dashboard.panes,
+      placementTileSize,
+      {
+        appColumns: 3,
+        appRows: 1,
+      },
+      canvasContentWidth !== undefined && canvasContentWidth > 0
+        ? { maxContentWidthPx: canvasContentWidth }
+        : undefined,
+    )
     const newPane: PaneItem = {
       id,
       label,
@@ -299,6 +378,7 @@ ${bg}`,
               }
               throw error
             }
+            return true
           }}
         />
       ) : null}

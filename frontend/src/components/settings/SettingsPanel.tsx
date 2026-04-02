@@ -1,6 +1,12 @@
 import { useMemo, useState } from 'react'
 
 import type { DashboardConfig, TileSizePreset, WidthMode } from '../../features/config/types'
+import { fixDashboardLayout } from '../../features/layout/fixDashboardLayout'
+import {
+  layoutContentCapPx,
+  shouldReorganizePanesForNarrowerLayout,
+} from '../../features/layout/layoutContentCap'
+import { getEffectiveTileSizeForCanvasWidth } from '../../features/layout/viewportLayout'
 
 type TabId = 'general' | 'layout' | 'appearance' | 'background' | 'about'
 
@@ -159,12 +165,14 @@ function LayoutStepSlider(props: {
 export default function SettingsPanel(props: {
   config: DashboardConfig
   onClose: () => void
-  onSave: (next: DashboardConfig) => Promise<void>
+  /** Return false if the user cancelled (e.g. confirm dialog). */
+  onSave: (next: DashboardConfig) => Promise<boolean>
 }) {
   const [tab, setTab] = useState<TabId>('general')
   const [draft, setDraft] = useState<DashboardConfig>(() => props.config)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [confirmReorgOpen, setConfirmReorgOpen] = useState(false)
 
   const dirty = useMemo(() => JSON.stringify(draft) !== JSON.stringify(props.config), [draft, props.config])
 
@@ -172,10 +180,44 @@ export default function SettingsPanel(props: {
     setSaving(true)
     setError(null)
     try {
-      await props.onSave(draft)
-      props.onClose()
+      if (shouldReorganizePanesForNarrowerLayout(props.config, draft)) {
+        setConfirmReorgOpen(true)
+        setSaving(false)
+        return
+      }
+      const saved = await props.onSave(draft)
+      if (saved) {
+        props.onClose()
+      }
     } catch (e) {
       setError(String((e as Error)?.message ?? e))
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  async function confirmAndSaveReorg() {
+    setSaving(true)
+    setError(null)
+    try {
+      let toSave = draft
+      const cap = layoutContentCapPx(draft)
+      if (cap !== null) {
+        const eff = getEffectiveTileSizeForCanvasWidth(cap, draft.appLayout.size)
+        const { config: reorganized, changed } = fixDashboardLayout(draft, cap, eff)
+        if (changed) {
+          toSave = reorganized
+        }
+      }
+
+      const saved = await props.onSave(toSave)
+      if (saved) {
+        setConfirmReorgOpen(false)
+        props.onClose()
+      }
+    } catch (e) {
+      setError(String((e as Error)?.message ?? e))
+      setConfirmReorgOpen(false)
     } finally {
       setSaving(false)
     }
@@ -548,6 +590,43 @@ export default function SettingsPanel(props: {
           </div>
         </div>
       </div>
+
+      {confirmReorgOpen ? (
+        <div className="fixed inset-0 z-[120] flex items-center justify-center p-4">
+          <button
+            type="button"
+            className="absolute inset-0 bg-black/55 backdrop-blur-sm"
+            aria-label="Close"
+            onClick={() => setConfirmReorgOpen(false)}
+            disabled={saving}
+          />
+          <div className="relative w-full max-w-md rounded-2xl border border-white/10 bg-[#0c1018]/95 p-5 shadow-[0_30px_80px_rgba(0,0,0,0.55)]">
+            <div className="text-sm font-medium text-white/90">Reorganize panes?</div>
+            <p className="mt-1 text-xs leading-relaxed text-white/60">
+              You’re saving a smaller layout width. Panes will be automatically reorganized to fit within the new width
+              (matching the narrow view layout).
+            </p>
+            <div className="mt-5 flex justify-end gap-2">
+              <button
+                type="button"
+                className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-xs text-white/70 hover:bg-white/10"
+                onClick={() => setConfirmReorgOpen(false)}
+                disabled={saving}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="rounded-xl border border-white/15 bg-white/10 px-3 py-2 text-xs text-white/90 hover:bg-white/15 disabled:opacity-60"
+                onClick={() => void confirmAndSaveReorg()}
+                disabled={saving}
+              >
+                {saving ? 'Saving…' : 'Reorganize & save'}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   )
 }

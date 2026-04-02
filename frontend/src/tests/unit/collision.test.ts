@@ -21,4 +21,30 @@ describe('interaction/collision', () => {
       isValidPanePlacement({ panes, appSize: 'small', paneId: 'p1', x: 0, y: 1 }),
     ).toBe(true)
   })
+
+  it('rejects placements that extend past maxContentWidthPx', () => {
+    const narrow: PaneItem[] = [
+      { id: 'p1', label: 'P1', position: '0,0', appColumns: 3, appRows: 1, apps: [] },
+    ]
+    expect(
+      isValidPanePlacement({
+        panes: narrow,
+        appSize: 'medium',
+        paneId: 'p1',
+        x: 0,
+        y: 0,
+        maxContentWidthPx: 2000,
+      }),
+    ).toBe(true)
+    expect(
+      isValidPanePlacement({
+        panes: narrow,
+        appSize: 'medium',
+        paneId: 'p1',
+        x: 4,
+        y: 0,
+        maxContentWidthPx: 200,
+      }),
+    ).toBe(false)
+  })
 })

@@ -1,5 +1,5 @@
 import type { PaneItem, TileSizePreset } from '../config/types'
-import { getLayoutTokens, getPaneMetrics } from '../layout/paneMath'
+import { getLayoutTokens, getPaneMetrics, getPanePlacementSteps } from '../layout/paneMath'
 import { parseCoordPair } from '../../lib/coords'
 
 interface PaneRect {
@@ -45,6 +45,8 @@ export function isValidPanePlacement(params: {
   y?: number
   appColumns?: number
   appRows?: number
+  /** Measured dashboard canvas content width; pane render box must not extend past this. */
+  maxContentWidthPx?: number
 }): boolean {
   const moving = params.panes.find((p) => p.id === params.paneId)
   if (!moving) return false
@@ -55,6 +57,23 @@ export function isValidPanePlacement(params: {
     appColumns: params.appColumns,
     appRows: params.appRows,
   })
+
+  if (
+    params.maxContentWidthPx !== undefined &&
+    Number.isFinite(params.maxContentWidthPx) &&
+    params.maxContentWidthPx > 0
+  ) {
+    const [gx0] = parseCoordPair(moving.position)
+    const gx = params.x ?? gx0
+    const appColumns = params.appColumns ?? moving.appColumns
+    const appRows = params.appRows ?? moving.appRows
+    const tokens = getLayoutTokens(params.appSize)
+    const { stepX } = getPanePlacementSteps(tokens)
+    const m = getPaneMetrics(appColumns, appRows, tokens)
+    const paneLeft = gx * stepX
+    if (paneLeft < -0.5) return false
+    if (paneLeft + m.renderPaneWidth > params.maxContentWidthPx + 0.5) return false
+  }
 
   return params.panes
     .filter((p) => p.id !== params.paneId)

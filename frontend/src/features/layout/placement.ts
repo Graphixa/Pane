@@ -8,6 +8,7 @@ export function findNextPaneGridPosition(
   panes: PaneItem[],
   appSize: TileSizePreset,
   newPane: Pick<PaneItem, 'appColumns' | 'appRows'>,
+  opts?: { maxContentWidthPx?: number },
 ): { x: number; y: number } {
   const temp: PaneItem = {
     id: PLACEHOLDER_PANE_ID,
@@ -28,6 +29,7 @@ export function findNextPaneGridPosition(
           paneId: PLACEHOLDER_PANE_ID,
           x,
           y,
+          maxContentWidthPx: opts?.maxContentWidthPx,
         })
       ) {
         return { x, y }

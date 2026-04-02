@@ -1,7 +1,8 @@
 import { useMemo, useState } from 'react'
 import type React from 'react'
 import type { DashboardConfig, PaneItem } from '../../features/config/types'
-import { computeReflowRows, maxPaneRenderWidth } from '../../features/layout/reflowLayout'
+import { maxPaneRenderWidth } from '../../features/layout/reflowLayout'
+import { buildReflowPresentation, needsDashboardReflow } from '../../features/layout/reflowPresentation'
 import { getEffectiveTileSizeForCanvasWidth } from '../../features/layout/viewportLayout'
 import {
   getAppColPitch,
@@ -98,27 +99,33 @@ export default function DashboardGrid(props: {
     return { panes: panesWithMetrics, height: nextHeight, width: nextWidth }
   }, [interaction, props.config.panes, tokens])
 
-  const reflowLayout = useMemo(() => {
+  const needsReflow = useMemo(() => {
     const cw = props.containerContentWidth
+    if (cw === undefined || cw <= 0) return false
+    return needsDashboardReflow(props.config, cw, effectiveTileSize)
+  }, [props.config, props.containerContentWidth, effectiveTileSize])
+
+  /** Flex wrap presentation is view-only; edit uses the saved grid + horizontal scroll until pack fits. */
+  const viewReflowPresentation = useMemo(() => {
+    const cw = props.containerContentWidth
+    if (props.editMode || !needsReflow) return null
     if (cw === undefined || cw <= 0) return null
-    if (width <= cw) return null
-    const entries = panes.map(({ pane, metrics }) => ({ pane, metrics }))
-    return computeReflowRows(entries, cw, tokens.paneGap)
-  }, [props.containerContentWidth, width, panes, tokens.paneGap])
+    return buildReflowPresentation(props.config, cw, effectiveTileSize)
+  }, [needsReflow, props.editMode, props.config, props.containerContentWidth, effectiveTileSize])
 
   const reflowScale = useMemo(() => {
     const cw = props.containerContentWidth
-    if (!reflowLayout || cw === undefined || cw <= 0) return 1
-    const flat = reflowLayout.rows.flat()
+    if (!viewReflowPresentation || cw === undefined || cw <= 0) return 1
+    const flat = viewReflowPresentation.rows.flat()
     const maxPane = maxPaneRenderWidth(flat.map((e) => ({ pane: e.pane, metrics: e.metrics })))
     if (maxPane <= cw) return 1
     return cw / maxPane
-  }, [reflowLayout, props.containerContentWidth])
+  }, [viewReflowPresentation, props.containerContentWidth])
 
-  const interactionLocked = Boolean(reflowLayout)
+  const editOverflowScroll = props.editMode && needsReflow
 
   function onPaneDragStart(pane: PaneItem, event: React.PointerEvent<HTMLDivElement>) {
-    if (!props.editMode || interactionLocked) return
+    if (!props.editMode) return
     const [startGridX, startGridY] = parseCoordPair(pane.position)
     const metrics = getPaneMetrics(pane.appColumns, pane.appRows, tokens)
     setSaveError(null)
@@ -142,7 +149,7 @@ export default function DashboardGrid(props: {
     edge: 'right' | 'bottom' | 'bottom-right',
     event: React.PointerEvent<HTMLButtonElement>,
   ) {
-    if (!props.editMode || interactionLocked) return
+    if (!props.editMode) return
     setSaveError(null)
     event.currentTarget.setPointerCapture(event.pointerId)
     setInteraction({
@@ -164,7 +171,7 @@ export default function DashboardGrid(props: {
     contentRect: DOMRect,
     event: React.PointerEvent<HTMLElement>,
   ) {
-    if (!props.editMode || interactionLocked) return
+    if (!props.editMode) return
     const [startCol, startRow] = parseCoordPair(app.position)
     setSaveError(null)
 
@@ -357,6 +364,7 @@ export default function DashboardGrid(props: {
         paneId: interaction.paneId,
         x: preview.previewGridX,
         y: preview.previewGridY,
+        maxContentWidthPx: props.containerContentWidth,
       })
 
       setInteraction({
@@ -444,6 +452,7 @@ export default function DashboardGrid(props: {
         paneId: interaction.paneId,
         appColumns: preview.previewColumns,
         appRows: preview.previewRows,
+        maxContentWidthPx: props.containerContentWidth,
       }) && Boolean(appsFit)
 
     setInteraction({
@@ -499,7 +508,6 @@ export default function DashboardGrid(props: {
         metrics={metrics}
         flowLayout={flowLayout}
         editMode={props.editMode}
-        interactionLocked={interactionLocked}
         onPaneDragStart={onPaneDragStart}
         onResizeStart={onResizeStart}
         onAppDragStart={onAppDragStart}
@@ -535,20 +543,20 @@ export default function DashboardGrid(props: {
     )
   }
 
-  // Capacity-based deterministic positioning, or wrapped reflow (no horizontal scroll).
+  // View: flex reflow when overflowing. Edit: saved grid + optional horizontal scroll until pack fits.
   return (
     <div
-      className="relative h-full min-h-0 w-full overflow-x-hidden overflow-y-auto"
+      className={`relative h-full min-h-0 w-full overflow-y-auto ${editOverflowScroll ? 'overflow-x-auto' : 'overflow-x-hidden'}`}
       style={{
         scrollbarGutter: 'stable',
-        minHeight: reflowLayout ? undefined : height + stepY,
-        minWidth: reflowLayout ? undefined : width + stepX,
+        minHeight: viewReflowPresentation ? undefined : height + stepY,
+        minWidth: viewReflowPresentation ? undefined : width + stepX,
       }}
       onPointerMove={onPointerMove}
       onPointerUp={onPointerEnd}
       onPointerCancel={onPointerEnd}
     >
-      {props.editMode && !reflowLayout ? (
+      {props.editMode && !viewReflowPresentation ? (
         <div
           className="pointer-events-none absolute inset-0 opacity-70"
           style={{
@@ -562,26 +570,20 @@ repeating-linear-gradient(90deg, rgba(255,255,255,0.055) 0 1px, transparent 1px 
           Failed to persist pane update: {saveError}
         </div>
       ) : null}
-      {reflowLayout && props.editMode ? (
-        <div className="mb-2 rounded-lg border border-amber-400/25 bg-amber-500/10 px-3 py-2 text-[11px] leading-snug text-amber-100/90">
-          Layout is wrapped to fit this width — pane drag, resize, and app reorder are off until there is enough
-          horizontal space.
-        </div>
-      ) : null}
-      {reflowLayout ? (
+      {viewReflowPresentation ? (
         <div
           className="w-full overflow-x-hidden"
           style={{
-            height: reflowLayout.contentHeight * reflowScale,
-            minHeight: reflowLayout.contentHeight * reflowScale,
+            height: viewReflowPresentation.contentHeight * reflowScale,
+            minHeight: viewReflowPresentation.contentHeight * reflowScale,
           }}
         >
           <div className="flex w-full justify-center overflow-x-hidden">
             <div
               className="relative shrink-0"
               style={{
-                width: reflowLayout.contentWidth,
-                height: reflowLayout.contentHeight,
+                width: viewReflowPresentation.contentWidth,
+                height: viewReflowPresentation.contentHeight,
                 transform: reflowScale < 1 ? `scale(${reflowScale})` : undefined,
                 transformOrigin: 'top center',
               }}
@@ -590,23 +592,21 @@ repeating-linear-gradient(90deg, rgba(255,255,255,0.055) 0 1px, transparent 1px 
                 className="flex w-full flex-col items-stretch"
                 style={{ gap: tokens.paneGap }}
               >
-                {reflowLayout.rows.map((rowEntries, ri) => (
+                {viewReflowPresentation.rows.map((rowEntries, ri) => (
                   <div
                     key={ri}
                     className="flex w-full flex-row flex-nowrap justify-center"
                     style={{ gap: tokens.paneGap }}
                   >
-                    {rowEntries.map((entry) => {
-                      const row = panes.find((r) => r.pane.id === entry.pane.id)
-                      if (!row) return null
-                      return renderPaneCard({
-                        pane: row.pane,
-                        metrics: row.metrics,
+                    {rowEntries.map((entry) =>
+                      renderPaneCard({
+                        pane: entry.pane,
+                        metrics: entry.metrics,
                         paneLeft: 0,
                         paneTop: 0,
                         flowLayout: true,
-                      })
-                    })}
+                      }),
+                    )}
                   </div>
                 ))}
               </div>
