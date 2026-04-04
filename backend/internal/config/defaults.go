@@ -4,7 +4,7 @@ package config
 func DefaultConfig() DashboardConfig {
 	maxW := 1200
 	return DashboardConfig{
-		Version: 1,
+		Version: 2,
 		Title:   "Dashboard",
 		Layout: Layout{
 			WidthMode:  WidthModePreset,

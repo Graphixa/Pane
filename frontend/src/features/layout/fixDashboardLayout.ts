@@ -2,8 +2,8 @@ import type { DashboardConfig, PaneItem, TileSizePreset } from '../config/types'
 import { isValidPanePlacement } from '../interaction/collision'
 import { formatCoordPair } from '../../lib/coords'
 import { findNextPaneGridPosition } from './placement'
-import { getPanePlacementSteps } from './paneMath'
 import { buildReflowPresentation } from './reflowPresentation'
+import { getAppColPitch } from './paneMath'
 
 export { fitPaneAppGridToMaxWidth } from './reflowPresentation'
 
@@ -22,9 +22,9 @@ function paneLayoutSignature(panes: PaneItem[]): string {
 
 /**
  * 1) Fit each pane’s app grid to the measured canvas width (narrower columns → more rows).
- * 2) Repack pane **macro** positions using the same **pixel row wrap** as presentation reflow
- *    (`buildReflowPresentation` / `computeReflowRows`), then assign integer `(x,y)` per row with
- *    collision checks so the persisted grid fits the measured canvas width.
+ * 2) Repack pane **top-left** on the **app tile canvas** (same steps as in-pane column/row pitch):
+ *    search along `tileStepX` horizontally; `paneWidth + paneGap` between placed panes; row advance
+ *    uses `rowMaxHeight + paneGap`.
  */
 export function fixDashboardLayout(
   config: DashboardConfig,
@@ -43,43 +43,40 @@ export function fixDashboardLayout(
   }
 
   const tokens = presentation.tokens
-  const { stepX, stepY } = getPanePlacementSteps(tokens)
-  const gapCellsX = Math.max(0, Math.ceil(tokens.paneGap / stepX))
-  const gapCellsY = Math.max(1, Math.ceil(tokens.paneGap / stepY))
+  const gap = tokens.paneGap
+  const tileStepX = getAppColPitch(tokens)
   const { rows } = presentation
 
   const beforeSig = paneLayoutSignature(config.panes)
 
   const placed: PaneItem[] = []
-  let gridY = 0
+  let cursorY = 0
 
   for (const row of rows) {
-    let rowSpanY = 1
     let cursorX = 0
+    let rowMaxH = 0
 
     for (const entry of row) {
       const m = entry.metrics
-      rowSpanY = Math.max(rowSpanY, m.gridSpanY)
+      rowMaxH = Math.max(rowMaxH, m.paneHeight)
 
       let placedThis = false
       for (let attempt = 0; attempt < 120; attempt++) {
-        const x = cursorX + attempt
-        const panesWith = [
-          ...placed,
-          { ...entry.pane, position: formatCoordPair(x, gridY) },
-        ]
+        const x = cursorX + attempt * tileStepX
+        const y = cursorY
+        const panesWith = [...placed, { ...entry.pane, position: formatCoordPair(x, y) }]
         if (
           isValidPanePlacement({
             panes: panesWith,
             appSize: tilePreset,
             paneId: entry.pane.id,
             x,
-            y: gridY,
+            y,
             maxContentWidthPx: w,
           })
         ) {
-          placed.push({ ...entry.pane, position: formatCoordPair(x, gridY) })
-          cursorX = x + m.gridSpanX + gapCellsX
+          placed.push({ ...entry.pane, position: formatCoordPair(x, y) })
+          cursorX = x + m.paneWidth + gap
           placedThis = true
           break
         }
@@ -96,11 +93,12 @@ export function fixDashboardLayout(
           { maxContentWidthPx: w },
         )
         placed.push({ ...entry.pane, position: formatCoordPair(pos.x, pos.y) })
-        cursorX = pos.x + m.gridSpanX + gapCellsX
+        const m2 = entry.metrics
+        cursorX = pos.x + m2.paneWidth + gap
       }
     }
 
-    gridY += rowSpanY + gapCellsY
+    cursorY += rowMaxH + gap
   }
 
   const byId = new Map(placed.map((p) => [p.id, p]))

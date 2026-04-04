@@ -3,13 +3,9 @@ import { createPortal } from 'react-dom'
 import type React from 'react'
 import type { AppItem, PaneItem } from '../../features/config/types'
 import { selfhstIconSvgUrl } from '../../features/icons/selfhst'
-import {
-  getAppColPitchDistributed,
-  getAppRowPitch,
-  getPaneInnerContentWidth,
-} from '../../features/layout/paneMath'
+import { getAppColPitchDistributed, getAppRowPitch, getPaneInnerTileWidth } from '../../features/layout/paneMath'
 import type { LayoutTokens, PaneMetrics } from '../../features/layout/paneMath'
-import { parseCoordPair } from '../../lib/coords'
+import { parseCoordPairSafe } from '../../lib/coords'
 import { shouldIgnorePaneDragTarget } from '../../lib/paneDragTarget'
 
 import AppTile from './AppTile'
@@ -66,8 +62,8 @@ function FloatingAppDragPreview(props: {
         ) : null}
       </div>
       <div
-        className="mt-0 w-full text-center text-[10px] leading-snug text-white/85 line-clamp-2 drop-shadow-[0_1px_2px_rgba(0,0,0,0.8)]"
-        style={{ marginTop: tokens.iconLabelGap, minHeight: tokens.labelBandHeight }}
+        className="mt-0 w-full overflow-hidden text-center text-[10px] leading-snug text-white/85 line-clamp-2 drop-shadow-[0_1px_2px_rgba(0,0,0,0.8)]"
+        style={{ marginTop: tokens.iconLabelGap, height: tokens.labelBandHeight }}
       >
         {app.name}
       </div>
@@ -149,8 +145,8 @@ export default function PaneCard(props: {
   const draggedApp = appDrag ? pane.apps.find((a) => a.id === appDrag.appId) : undefined
   const { gridColumns, gridRows } = props
 
-  const innerContentW = getPaneInnerContentWidth(metrics.renderPaneWidth, tokens)
-  const colPitch = getAppColPitchDistributed(tokens, gridColumns, innerContentW)
+  const innerTileW = getPaneInnerTileWidth(metrics, tokens)
+  const colPitch = getAppColPitchDistributed(tokens, gridColumns, innerTileW)
   const rowPitch = getAppRowPitch(tokens)
 
   function onPanePointerDown(event: React.PointerEvent<HTMLDivElement>) {
@@ -170,28 +166,31 @@ export default function PaneCard(props: {
 
   const emptySlots = useMemo(() => {
     if (!props.editMode) return []
+    const draggedId = appDrag?.appId
     const slots: Array<{ col: number; row: number }> = []
     for (let row = 0; row < gridRows; row++) {
       for (let col = 0; col < gridColumns; col++) {
         const pos = `${col},${row}`
-        if (!pane.apps.some((a) => a.position === pos)) {
-          slots.push({ col, row })
-        }
+        const occupied = pane.apps.some((a) => {
+          if (draggedId && a.id === draggedId) return false
+          return a.position === pos
+        })
+        if (!occupied) slots.push({ col, row })
       }
     }
     return slots
-  }, [props.editMode, gridRows, gridColumns, pane.apps])
+  }, [props.editMode, gridRows, gridColumns, pane.apps, appDrag?.appId])
 
   const flow = Boolean(props.flowLayout)
 
   return (
     <div
       ref={rootRef}
-      className={`rounded-2xl border bg-white/5 backdrop-blur transition-all ${flow ? 'relative shrink-0' : 'absolute'}`}
+      className={`flex flex-col overflow-hidden rounded-2xl border bg-white/5 backdrop-blur transition-all ${flow ? 'relative shrink-0' : 'absolute'}`}
       style={{
         ...(flow ? {} : { left: paneLeft, top: paneTop }),
-        width: metrics.renderPaneWidth,
-        height: metrics.renderPaneHeight,
+        width: metrics.paneWidth,
+        height: metrics.paneHeight,
         borderColor: isInvalid ? 'rgba(248,113,113,0.8)' : 'rgba(255,255,255,0.1)',
         opacity: isActive ? 0.9 : 1,
         boxShadow: isActive
@@ -202,7 +201,7 @@ export default function PaneCard(props: {
     >
       {props.editMode ? (
         <div
-          className="relative grid w-full grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-1 px-2 text-xs text-white/80 sm:px-3"
+          className="relative grid w-full shrink-0 grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-1 px-3 text-xs text-white/80"
           style={{ height: tokens.headerHeight }}
         >
           <div className="min-w-0" data-pane-no-drag>
@@ -248,24 +247,22 @@ export default function PaneCard(props: {
         </div>
       ) : (
         <div
-          className="flex min-h-0 items-center px-3 text-xs text-white/80"
+          className="flex min-h-0 shrink-0 items-center px-3 text-xs text-white/80"
           style={{ height: tokens.headerHeight }}
         >
           <span className="block min-w-0 truncate">{pane.label}</span>
         </div>
       )}
 
-      <div
-        ref={contentRef}
-        className="relative"
-        style={{
-          left: 0,
-          top: tokens.headerHeight,
-          width: metrics.renderPaneWidth,
-          height: metrics.contentHeight,
-          position: 'absolute',
-        }}
-      >
+      <div className="relative min-h-0 w-full flex-1">
+        <div
+          ref={contentRef}
+          className="absolute left-0 top-0"
+          style={{
+            width: metrics.renderPaneWidth,
+            height: metrics.contentHeight,
+          }}
+        >
         {props.editMode ? (
           <div
             className="pointer-events-none absolute inset-0 rounded-lg"
@@ -283,7 +280,7 @@ repeating-linear-gradient(90deg, rgba(255,255,255,0.07) 0 1px, transparent 1px $
           return (
             <div
               key={`slot-${col}-${row}`}
-              className="pointer-events-auto absolute rounded-xl border border-dashed border-white/18 bg-white/[0.02]"
+              className="pointer-events-auto absolute z-0 rounded-xl border border-dashed border-white/18 bg-white/[0.02]"
               style={{
                 left,
                 top,
@@ -311,8 +308,11 @@ repeating-linear-gradient(90deg, rgba(255,255,255,0.07) 0 1px, transparent 1px $
         {pane.apps.map((app: AppItem) => {
           const isDragged = appDrag?.appId === app.id
           const isSwapTarget = appDrag?.collidedAppId === app.id
+          if (isDragged) return null
 
-          const [col, row] = parseCoordPair(app.position)
+          const coords = parseCoordPairSafe(app.position)
+          if (!coords) return null
+          const [col, row] = coords
           const left = tokens.gridInsetX + col * colPitch
           const top = tokens.gridInsetY + row * rowPitch
 
@@ -324,7 +324,7 @@ repeating-linear-gradient(90deg, rgba(255,255,255,0.07) 0 1px, transparent 1px $
               top={top}
               tokens={tokens}
               disableLink={props.editMode}
-              isDragged={isDragged}
+              isDragged={false}
               isSwapTarget={isSwapTarget}
               onPointerDown={(event) => {
                 if (!props.editMode || props.interactionLocked) return
@@ -341,7 +341,9 @@ repeating-linear-gradient(90deg, rgba(255,255,255,0.07) 0 1px, transparent 1px $
           <div className="pointer-events-none absolute inset-0">
             {pane.apps.map((app) => {
               if (appDrag?.appId === app.id) return null
-              const [col, row] = parseCoordPair(app.position)
+              const coords = parseCoordPairSafe(app.position)
+              if (!coords) return null
+              const [col, row] = coords
               const left = tokens.gridInsetX + col * colPitch
               const top = tokens.gridInsetY + row * rowPitch
               return (
@@ -368,7 +370,7 @@ repeating-linear-gradient(90deg, rgba(255,255,255,0.07) 0 1px, transparent 1px $
 
         {draggedApp && appDrag ? (
           <div
-            className="pointer-events-none absolute rounded-xl ring-2 ring-sky-400/75 ring-offset-0"
+            className="pointer-events-none absolute z-[2] rounded-xl ring-2 ring-sky-400/75 ring-offset-0"
             style={{
               left: tokens.gridInsetX + appDrag.previewCol * colPitch,
               top: tokens.gridInsetY + appDrag.previewRow * rowPitch,
@@ -378,6 +380,7 @@ repeating-linear-gradient(90deg, rgba(255,255,255,0.07) 0 1px, transparent 1px $
             }}
           />
         ) : null}
+        </div>
       </div>
 
       {draggedApp && appDrag ? (

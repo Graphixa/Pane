@@ -39,7 +39,7 @@ export function computeReflowRows(
   let rowX = 0
 
   for (const entry of order) {
-    const w = entry.metrics.renderPaneWidth
+    const w = entry.metrics.paneWidth
 
     if (currentRow.length > 0 && rowX + gap + w > availableWidth) {
       rows.push(currentRow)
@@ -60,8 +60,8 @@ export function computeReflowRows(
     let rowH = 0
     for (let j = 0; j < row.length; j++) {
       const e = row[j]!
-      rowW += (j > 0 ? gap : 0) + e.metrics.renderPaneWidth
-      rowH = Math.max(rowH, e.metrics.renderPaneHeight)
+      rowW += (j > 0 ? gap : 0) + e.metrics.paneWidth
+      rowH = Math.max(rowH, e.metrics.paneHeight)
     }
     contentWidth = Math.max(contentWidth, rowW)
     contentHeight += (i > 0 ? gap : 0) + rowH
@@ -70,7 +70,11 @@ export function computeReflowRows(
   return { rows, contentWidth, contentHeight }
 }
 
-export function maxPaneRenderWidth(entries: PaneLayoutEntry[]): number {
+/** Largest macro-snapped pane width in the set (for reflow scale). */
+export function maxPaneFootprintWidth(entries: PaneLayoutEntry[]): number {
   if (entries.length === 0) return 0
-  return Math.max(...entries.map((e) => e.metrics.renderPaneWidth))
+  return Math.max(...entries.map((e) => e.metrics.paneWidth))
 }
+
+/** @deprecated Use maxPaneFootprintWidth */
+export const maxPaneRenderWidth = maxPaneFootprintWidth

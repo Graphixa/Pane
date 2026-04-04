@@ -4,21 +4,24 @@ import { isValidPanePlacement } from '../../features/interaction/collision'
 import type { PaneItem } from '../../features/config/types'
 
 describe('interaction/collision', () => {
-  const panes: PaneItem[] = [
-    { id: 'p1', label: 'P1', position: '0,0', appColumns: 5, appRows: 1, apps: [] },
-    { id: 'p2', label: 'P2', position: '2,0', appColumns: 3, appRows: 2, apps: [] },
-  ]
-
-  it('rejects overlapping placements', () => {
-    // Wide p1 (5 cols, small) spans 2 macro columns; p2 sits at x=2. Moving p1 to x=1 overlaps p2.
+  it('rejects overlapping placements (pixel positions + minimum gap)', () => {
+    const panes: PaneItem[] = [
+      { id: 'p1', label: 'P1', position: '0,0', appColumns: 5, appRows: 1, apps: [] },
+      // 6 * (48+10) = 348px — was tile index 6; now explicit pixels
+      { id: 'p2', label: 'P2', position: '348,0', appColumns: 3, appRows: 2, apps: [] },
+    ]
     expect(
-      isValidPanePlacement({ panes, appSize: 'small', paneId: 'p1', x: 1, y: 0 }),
+      isValidPanePlacement({ panes, appSize: 'small', paneId: 'p1', x: 300, y: 0 }),
     ).toBe(false)
   })
 
   it('allows non-overlapping placements', () => {
+    const panes: PaneItem[] = [
+      { id: 'p1', label: 'P1', position: '0,0', appColumns: 5, appRows: 1, apps: [] },
+      { id: 'p2', label: 'P2', position: '348,0', appColumns: 3, appRows: 2, apps: [] },
+    ]
     expect(
-      isValidPanePlacement({ panes, appSize: 'small', paneId: 'p1', x: 0, y: 1 }),
+      isValidPanePlacement({ panes, appSize: 'small', paneId: 'p1', x: 0, y: 400 }),
     ).toBe(true)
   })
 
@@ -44,6 +47,22 @@ describe('interaction/collision', () => {
         x: 4,
         y: 0,
         maxContentWidthPx: 200,
+      }),
+    ).toBe(false)
+  })
+
+  it('rejects when natural pane width exceeds maxContentWidthPx', () => {
+    const wideContent: PaneItem[] = [
+      { id: 'p1', label: 'P1', position: '0,0', appColumns: 4, appRows: 1, apps: [] },
+    ]
+    expect(
+      isValidPanePlacement({
+        panes: wideContent,
+        appSize: 'medium',
+        paneId: 'p1',
+        x: 0,
+        y: 0,
+        maxContentWidthPx: 260,
       }),
     ).toBe(false)
   })

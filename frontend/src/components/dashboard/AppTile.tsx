@@ -44,17 +44,28 @@ export default function AppTile(props: {
       draggable={false}
       onError={() => setIconFailed(true)}
     />
+  ) : props.disableLink ? (
+    <span
+      className="pointer-events-none select-none text-[13px] font-light leading-none text-white/35"
+      aria-hidden
+    >
+      +
+    </span>
   ) : null
 
+  /** Fixed band height — must match `appCellHeight` math in paneMath (minHeight allowed 2-line text to exceed it). */
   const label = (
     <div
       className={[
-        'mt-0 w-full text-center text-[10px] leading-snug text-white/75 line-clamp-2',
+        'mt-0 w-full overflow-hidden text-center text-[10px] leading-snug text-white/75 line-clamp-2',
         props.disableLink ? 'pointer-events-none select-none' : '',
       ]
         .filter(Boolean)
         .join(' ')}
-      style={{ marginTop: tokens.iconLabelGap, minHeight: tokens.labelBandHeight }}
+      style={{
+        marginTop: tokens.iconLabelGap,
+        height: tokens.labelBandHeight,
+      }}
     >
       {app.name}
     </div>
@@ -63,7 +74,7 @@ export default function AppTile(props: {
   if (props.disableLink) {
     return (
       <div
-        className="absolute"
+        className="absolute z-[1]"
         style={{
           left,
           top,
@@ -93,7 +104,7 @@ export default function AppTile(props: {
 
   return (
     <a
-      className="absolute block text-left no-underline"
+      className="absolute z-[1] block text-left no-underline"
       href={app.url}
       target={isExternal ? '_blank' : undefined}
       rel={isExternal ? 'noopener noreferrer' : undefined}

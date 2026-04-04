@@ -1,17 +1,16 @@
 import { useMemo, useState } from 'react'
 import type React from 'react'
 import type { DashboardConfig, PaneItem } from '../../features/config/types'
-import { maxPaneRenderWidth } from '../../features/layout/reflowLayout'
+import { maxPaneFootprintWidth } from '../../features/layout/reflowLayout'
 import { buildReflowPresentation, needsDashboardReflow } from '../../features/layout/reflowPresentation'
 import { getEffectiveTileSizeForCanvasWidth } from '../../features/layout/viewportLayout'
 import {
-  getAppColPitch,
   getAppColPitchDistributed,
-  getAppRowPitch,
+  getDashboardCanvasGridSpec,
   getLayoutTokens,
-  getPaneInnerContentWidth,
+  getPaneCanvasOriginPixels,
+  getPaneInnerTileWidth,
   getPaneMetrics,
-  getPanePlacementSteps,
 } from '../../features/layout/paneMath'
 import type { PaneMetrics } from '../../features/layout/paneMath'
 import type { ActiveInteraction } from '../../features/interaction/dragTypes'
@@ -29,12 +28,6 @@ import {
   moveOrSwapApps,
   remapAppPositionsForGridResize,
 } from '../../features/apps/appMath'
-
-function getPaneOrigin(pane: PaneItem, tokens: ReturnType<typeof getLayoutTokens>) {
-  const [x, y] = parseCoordPair(pane.position)
-  const { stepX, stepY } = getPanePlacementSteps(tokens)
-  return { paneLeft: x * stepX, paneTop: y * stepY }
-}
 
 export default function DashboardGrid(props: {
   config: DashboardConfig
@@ -58,9 +51,10 @@ export default function DashboardGrid(props: {
   )
 
   const tokens = useMemo(() => getLayoutTokens(effectiveTileSize), [effectiveTileSize])
-  const { stepX, stepY } = getPanePlacementSteps(tokens)
-  const resizeColStep = getAppColPitch(tokens)
-  const appRowPitch = getAppRowPitch(tokens)
+  const canvasGridSpec = useMemo(() => getDashboardCanvasGridSpec(tokens), [tokens])
+  const { tileStepX: appTileStepX, tileStepY: appTileStepY } = canvasGridSpec
+  const resizeColStep = appTileStepX
+  const appRowPitch = appTileStepY
 
   const { panes, height, width } = useMemo(() => {
     const panesWithMetrics = props.config.panes.map((pane) => {
@@ -70,7 +64,7 @@ export default function DashboardGrid(props: {
         interaction.type === 'pane-resize' && interaction.paneId === pane.id
 
       const panePosition = isDragPreview
-        ? formatCoordPair(interaction.previewGridX, interaction.previewGridY)
+        ? formatCoordPair(interaction.previewLeftPx, interaction.previewTopPx)
         : pane.position
       const appColumns = isResizePreview ? interaction.previewColumns : pane.appColumns
       const appRows = isResizePreview ? interaction.previewRows : pane.appRows
@@ -82,17 +76,17 @@ export default function DashboardGrid(props: {
         appRows,
       }
 
-      const { paneLeft, paneTop } = getPaneOrigin(paneForLayout, tokens)
+      const { paneLeft, paneTop } = getPaneCanvasOriginPixels(paneForLayout, tokens)
       const metrics = getPaneMetrics(appColumns, appRows, tokens)
       return { pane, paneLeft, paneTop, metrics }
     })
 
     const nextHeight = panesWithMetrics.reduce(
-      (acc, p) => Math.max(acc, p.paneTop + p.metrics.renderPaneHeight),
+      (acc, p) => Math.max(acc, p.paneTop + p.metrics.paneHeight),
       0,
     )
     const nextWidth = panesWithMetrics.reduce(
-      (acc, p) => Math.max(acc, p.paneLeft + p.metrics.renderPaneWidth),
+      (acc, p) => Math.max(acc, p.paneLeft + p.metrics.paneWidth),
       0,
     )
 
@@ -117,7 +111,7 @@ export default function DashboardGrid(props: {
     const cw = props.containerContentWidth
     if (!viewReflowPresentation || cw === undefined || cw <= 0) return 1
     const flat = viewReflowPresentation.rows.flat()
-    const maxPane = maxPaneRenderWidth(flat.map((e) => ({ pane: e.pane, metrics: e.metrics })))
+    const maxPane = maxPaneFootprintWidth(flat.map((e) => ({ pane: e.pane, metrics: e.metrics })))
     if (maxPane <= cw) return 1
     return cw / maxPane
   }, [viewReflowPresentation, props.containerContentWidth])
@@ -126,7 +120,7 @@ export default function DashboardGrid(props: {
 
   function onPaneDragStart(pane: PaneItem, event: React.PointerEvent<HTMLDivElement>) {
     if (!props.editMode) return
-    const [startGridX, startGridY] = parseCoordPair(pane.position)
+    const [startLeftPx, startTopPx] = parseCoordPair(pane.position)
     const metrics = getPaneMetrics(pane.appColumns, pane.appRows, tokens)
     setSaveError(null)
 
@@ -134,10 +128,10 @@ export default function DashboardGrid(props: {
       type: 'pane-drag',
       paneId: pane.id,
       session: createPointerSession(event.pointerId, { x: event.clientX, y: event.clientY }),
-      startGridX,
-      startGridY,
-      previewGridX: startGridX,
-      previewGridY: startGridY,
+      startLeftPx,
+      startTopPx,
+      previewLeftPx: startLeftPx,
+      previewTopPx: startTopPx,
       spanX: metrics.gridSpanX,
       spanY: metrics.gridSpanY,
       validDrop: true,
@@ -204,14 +198,14 @@ export default function DashboardGrid(props: {
         pane.id === interactionState.paneId
           ? {
               ...pane,
-              position: formatCoordPair(interactionState.previewGridX, interactionState.previewGridY),
+              position: formatCoordPair(interactionState.previewLeftPx, interactionState.previewTopPx),
             }
           : pane,
       ),
     }
     await props.onCommitConfig(next)
     const fromServer = await apiUpdatePane(interactionState.paneId, {
-      position: formatCoordPair(interactionState.previewGridX, interactionState.previewGridY),
+      position: formatCoordPair(interactionState.previewLeftPx, interactionState.previewTopPx),
     })
     await props.onCommitConfigFromServer(fromServer)
   }
@@ -350,28 +344,29 @@ export default function DashboardGrid(props: {
         x: event.clientX,
         y: event.clientY,
       })
+      // Snap to app-tile canvas steps (same as getAppColPitch / getAppRowPitch), not paneGap micro-steps.
       const preview = getPaneDragPreview(
-        interaction.startGridX,
-        interaction.startGridY,
+        interaction.startLeftPx,
+        interaction.startTopPx,
         session.delta.x,
         session.delta.y,
-        stepX,
-        stepY,
+        appTileStepX,
+        appTileStepY,
       )
       const validDrop = isValidPanePlacement({
         panes: props.config.panes,
         appSize: effectiveTileSize,
         paneId: interaction.paneId,
-        x: preview.previewGridX,
-        y: preview.previewGridY,
+        x: preview.previewLeftPx,
+        y: preview.previewTopPx,
         maxContentWidthPx: props.containerContentWidth,
       })
 
       setInteraction({
         ...interaction,
         session,
-        previewGridX: preview.previewGridX,
-        previewGridY: preview.previewGridY,
+        previewLeftPx: preview.previewLeftPx,
+        previewTopPx: preview.previewTopPx,
         validDrop,
       })
       return
@@ -387,9 +382,7 @@ export default function DashboardGrid(props: {
       const dragMetrics = dragPane
         ? getPaneMetrics(dragPane.appColumns, dragPane.appRows, tokens)
         : null
-      const dragInnerW = dragMetrics
-        ? getPaneInnerContentWidth(dragMetrics.renderPaneWidth, tokens)
-        : 0
+      const dragInnerW = dragMetrics ? getPaneInnerTileWidth(dragMetrics, tokens) : 0
       const appColStepDistributed = dragPane
         ? getAppColPitchDistributed(tokens, dragPane.appColumns, dragInnerW)
         : resizeColStep
@@ -549,8 +542,8 @@ export default function DashboardGrid(props: {
       className={`relative h-full min-h-0 w-full overflow-y-auto ${editOverflowScroll ? 'overflow-x-auto' : 'overflow-x-hidden'}`}
       style={{
         scrollbarGutter: 'stable',
-        minHeight: viewReflowPresentation ? undefined : height + stepY,
-        minWidth: viewReflowPresentation ? undefined : width + stepX,
+        minHeight: viewReflowPresentation ? undefined : height + appTileStepY,
+        minWidth: viewReflowPresentation ? undefined : width + appTileStepX,
       }}
       onPointerMove={onPointerMove}
       onPointerUp={onPointerEnd}
@@ -558,11 +551,13 @@ export default function DashboardGrid(props: {
     >
       {props.editMode && !viewReflowPresentation ? (
         <div
-          className="pointer-events-none absolute inset-0 opacity-70"
+          className="pointer-events-none absolute inset-0"
           style={{
-            backgroundImage: `repeating-linear-gradient(0deg, rgba(255,255,255,0.055) 0 1px, transparent 1px ${stepY}px),
-repeating-linear-gradient(90deg, rgba(255,255,255,0.055) 0 1px, transparent 1px ${stepX}px)`,
+            opacity: 0.42,
+            backgroundImage: `repeating-linear-gradient(0deg, rgba(255,255,255,0.06) 0 1px, transparent 1px ${appTileStepY}px),
+repeating-linear-gradient(90deg, rgba(255,255,255,0.06) 0 1px, transparent 1px ${appTileStepX}px)`,
           }}
+          aria-hidden
         />
       ) : null}
       {saveError ? (

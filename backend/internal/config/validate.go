@@ -11,9 +11,8 @@ func ValidateConfig(cfg *DashboardConfig) error {
 	if cfg == nil {
 		return fmt.Errorf("%w: nil config", ErrValidation)
 	}
-	if cfg.Version != 1 && cfg.Version != 0 {
-		// Allow 0 while bootstrapping, but prefer 1.
-		return fmt.Errorf("%w: unsupported version %d", ErrValidation, cfg.Version)
+	if cfg.Version != 2 {
+		return fmt.Errorf("%w: unsupported version %d (expected 2)", ErrValidation, cfg.Version)
 	}
 	if cfg.Title == "" {
 		return fmt.Errorf("%w: title is required", ErrValidation)

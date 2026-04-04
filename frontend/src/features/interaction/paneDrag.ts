@@ -1,16 +1,19 @@
+/**
+ * Pixel-space drag preview. Pass **app tile canvas** steps: `getAppColPitch` / `getAppRowPitch`.
+ */
 export function getPaneDragPreview(
-  startGridX: number,
-  startGridY: number,
+  startLeftPx: number,
+  startTopPx: number,
   deltaX: number,
   deltaY: number,
-  stepX: number,
-  stepY: number,
-): { previewGridX: number; previewGridY: number } {
-  const deltaGridX = Math.round(deltaX / stepX)
-  const deltaGridY = Math.round(deltaY / stepY)
+  snapStepX: number,
+  snapStepY: number,
+): { previewLeftPx: number; previewTopPx: number } {
+  const dx = Math.round(deltaX / snapStepX) * snapStepX
+  const dy = Math.round(deltaY / snapStepY) * snapStepY
 
   return {
-    previewGridX: Math.max(0, startGridX + deltaGridX),
-    previewGridY: Math.max(0, startGridY + deltaGridY),
+    previewLeftPx: Math.max(0, startLeftPx + dx),
+    previewTopPx: Math.max(0, startTopPx + dy),
   }
 }

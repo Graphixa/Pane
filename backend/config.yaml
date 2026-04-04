@@ -1,8 +1,8 @@
-version: 1
+version: 2
 title: My Server
 layout:
     widthMode: preset
-    maxWidth: 1440
+    maxWidth: 1024
     customWidth: 960
 appLayout:
     size: medium
@@ -12,38 +12,38 @@ appearance:
 panes:
     - id: pane-312ad6b368
       label: New pane
-      position: 11,0
-      appColumns: 3
-      appRows: 2
+      position: 488,94
+      appColumns: 4
+      appRows: 1
       apps: []
     - id: pane-c9cf705a52
       label: Main Tools
-      position: 0,0
-      appColumns: 6
-      appRows: 2
+      position: 0,94
+      appColumns: 7
+      appRows: 1
       apps:
         - id: app-52caf9a5ef
           name: App 1
-          position: 3,1
+          position: 6,0
           url: https://app.com
           icon: homeassistant
           openInNewTab: true
         - id: app-93c53736e8
           name: Test
-          position: 4,0
+          position: 3,0
           url: https://test.com
           icon: speedtest-light
           openInNewTab: true
         - id: app-70ea683a47
           name: Wikipedia
-          position: 1,0
+          position: 0,0
           url: https://wikipedia.com
           icon: wikipedia
           openInNewTab: true
     - id: pane-8b3e31f018
       label: Pane 3
-      position: 0,2
-      appColumns: 3
+      position: 0,282
+      appColumns: 6
       appRows: 1
       apps:
         - id: app-cfc6aa079f
@@ -52,3 +52,21 @@ panes:
           url: https://magic.com
           icon: magic
           openInNewTab: true
+        - id: app-3278c479d9
+          name: test
+          position: 3,0
+          url: https://test.com
+          icon: ""
+          openInNewTab: true
+        - id: app-23a984f27a
+          name: Really long app name just for testing
+          position: 5,0
+          url: https://really.io
+          icon: ""
+          openInNewTab: true
+    - id: pane-edd9f92cf9
+      label: Test 3
+      position: 792,94
+      appColumns: 3
+      appRows: 1
+      apps: []

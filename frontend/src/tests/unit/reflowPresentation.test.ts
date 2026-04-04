@@ -22,7 +22,7 @@ function paneAt(id: string, x: number, y: number, cols = 3, rows = 1): PaneItem 
 
 function minimalConfig(panes: PaneItem[]): DashboardConfig {
   return {
-    version: 1,
+    version: 2,
     title: 't',
     layout: { widthMode: 'full' },
     appLayout: { size: 'medium' },
@@ -33,7 +33,7 @@ function minimalConfig(panes: PaneItem[]): DashboardConfig {
 
 describe('layout/reflowPresentation', () => {
   it('needsDashboardReflow matches content extent vs canvas', () => {
-    const cfg = minimalConfig([paneAt('a', 0, 0), paneAt('b', 1, 0)])
+    const cfg = minimalConfig([paneAt('a', 0, 0), paneAt('b', 220, 0)])
     const tokens = getLayoutTokens('medium')
     const { width } = computeDashboardContentExtent(cfg, tokens)
     expect(needsDashboardReflow(cfg, width - 1, 'medium')).toBe(true)
@@ -42,10 +42,10 @@ describe('layout/reflowPresentation', () => {
   })
 
   it('buildReflowPresentation matches fixDashboardLayout row structure (pane ids per row)', () => {
-    const cfg = minimalConfig([paneAt('a', 0, 0), paneAt('b', 1, 0)])
+    const cfg = minimalConfig([paneAt('a', 0, 0), paneAt('b', 220, 0)])
     const t = getLayoutTokens('medium')
     const m = getPaneMetrics(3, 1, t)
-    const w = m.renderPaneWidth
+    const w = m.paneWidth
     const canvas = w + t.paneGap + Math.floor(w / 2)
 
     const pres = buildReflowPresentation(cfg, canvas, 'medium')
@@ -61,14 +61,14 @@ describe('layout/reflowPresentation', () => {
   })
 
   it('buildReflowPresentation wraps using fitted metrics on narrow canvas', () => {
-    const cfg = minimalConfig([paneAt('a', 0, 0), paneAt('b', 1, 0)])
+    const cfg = minimalConfig([paneAt('a', 0, 0), paneAt('b', 220, 0)])
     const t = getLayoutTokens('medium')
     const m = getPaneMetrics(3, 1, t)
-    const narrow = Math.min(m.renderPaneWidth, 320)
+    const narrow = Math.min(m.paneWidth, 320)
     const pres = buildReflowPresentation(cfg, narrow, 'medium')
     expect(pres).not.toBeNull()
     expect(pres!.rows.length).toBeGreaterThanOrEqual(1)
     const flat = pres!.rows.flat()
-    expect(flat.every((e) => e.metrics.renderPaneWidth <= narrow)).toBe(true)
+    expect(flat.every((e) => e.metrics.paneWidth <= narrow)).toBe(true)
   })
 })

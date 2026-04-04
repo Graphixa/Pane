@@ -15,7 +15,8 @@ export interface AppItem {
 export interface PaneItem {
   id: string
   label: string
-  position: string // "x,y"
+  /** `"leftPx,topPx"` from dashboard canvas origin (top-left of pane border box). */
+  position: string
   appColumns: number
   appRows: number
   apps: AppItem[]

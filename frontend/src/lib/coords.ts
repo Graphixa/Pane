@@ -6,6 +6,13 @@ export function parseCoordPair(value: string): [number, number] {
   return [Number(match[1]), Number(match[2])]
 }
 
+/** Same as {@link parseCoordPair} but returns `null` instead of throwing (bad persisted data). */
+export function parseCoordPairSafe(value: string): [number, number] | null {
+  const match = coordPairRe.exec(value)
+  if (!match) return null
+  return [Number(match[1]), Number(match[2])]
+}
+
 export function formatCoordPair(x: number, y: number): string {
   return `${x},${y}`
 }

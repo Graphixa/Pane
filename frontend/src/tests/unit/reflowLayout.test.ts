@@ -30,7 +30,7 @@ describe('layout/reflowLayout', () => {
   it('computeReflowRows wraps to the next row when row is full', () => {
     const t = getLayoutTokens('medium')
     const m = getPaneMetrics(3, 1, t)
-    const w = m.renderPaneWidth
+    const w = m.paneWidth
     const entries = [
       { pane: paneAt('a', 0, 0), metrics: m },
       { pane: paneAt('b', 1, 0), metrics: m },
@@ -40,6 +40,6 @@ describe('layout/reflowLayout', () => {
     const { rows, contentWidth, contentHeight } = computeReflowRows(entries, available, gap)
     expect(rows.map((r) => r.map((e) => e.pane.id))).toEqual([['a'], ['b']])
     expect(contentWidth).toBeLessThanOrEqual(available)
-    expect(contentHeight).toBeGreaterThan(m.renderPaneHeight)
+    expect(contentHeight).toBeGreaterThan(m.paneHeight)
   })
 })

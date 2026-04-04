@@ -1,22 +1,16 @@
 import type { DashboardConfig, PaneItem, TileSizePreset } from '../config/types'
 import { remapAppPositionsForGridResize } from '../apps/appMath'
-import { parseCoordPair } from '../../lib/coords'
-import {
-  getLayoutTokens,
-  getPaneMetrics,
-  getPanePlacementSteps,
-  type LayoutTokens,
-} from './paneMath'
+import { getLayoutTokens, getPaneCanvasOriginPixels, getPaneMetrics, type LayoutTokens } from './paneMath'
 import { computeReflowRows, sortPanesForReflow, type PaneLayoutEntry } from './reflowLayout'
 
 /**
- * Shrink app columns (and grow rows) until the pane’s render width fits `maxRenderWidthPx`,
+ * Shrink app columns (and grow rows) until the pane **footprint** width fits `maxFootprintWidthPx`,
  * preserving app order via row-major remap (same as manual resize).
  */
 export function fitPaneAppGridToMaxWidth(
   pane: PaneItem,
   tokens: LayoutTokens,
-  maxRenderWidthPx: number,
+  maxFootprintWidthPx: number,
 ): PaneItem {
   const n = pane.apps.length
   const startCols = Math.max(1, pane.appColumns)
@@ -24,7 +18,7 @@ export function fitPaneAppGridToMaxWidth(
   for (let cols = startCols; cols >= 1; cols--) {
     const rows = Math.max(1, Math.ceil(Math.max(n, 1) / cols))
     const m = getPaneMetrics(cols, rows, tokens)
-    if (m.renderPaneWidth <= maxRenderWidthPx && cols * rows >= n) {
+    if (m.paneWidth <= maxFootprintWidthPx && cols * rows >= n) {
       const appsUnchanged =
         cols === pane.appColumns && rows === pane.appRows
           ? pane.apps
@@ -46,9 +40,7 @@ export function getPaneOriginForTokens(pane: PaneItem, tokens: LayoutTokens): {
   paneLeft: number
   paneTop: number
 } {
-  const [x, y] = parseCoordPair(pane.position)
-  const { stepX, stepY } = getPanePlacementSteps(tokens)
-  return { paneLeft: x * stepX, paneTop: y * stepY }
+  return getPaneCanvasOriginPixels(pane, tokens)
 }
 
 /**
@@ -64,8 +56,8 @@ export function computeDashboardContentExtent(
   for (const pane of config.panes) {
     const { paneLeft, paneTop } = getPaneOriginForTokens(pane, tokens)
     const metrics = getPaneMetrics(pane.appColumns, pane.appRows, tokens)
-    width = Math.max(width, paneLeft + metrics.renderPaneWidth)
-    height = Math.max(height, paneTop + metrics.renderPaneHeight)
+    width = Math.max(width, paneLeft + metrics.paneWidth)
+    height = Math.max(height, paneTop + metrics.paneHeight)
   }
   return { width, height }
 }

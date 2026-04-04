@@ -9,10 +9,10 @@ import {
 function baseConfig(overrides: Partial<DashboardConfig> = {}): DashboardConfig {
   const panes: PaneItem[] = [
     { id: 'a', label: 'A', position: '0,0', appColumns: 3, appRows: 1, apps: [] },
-    { id: 'b', label: 'B', position: '4,0', appColumns: 3, appRows: 1, apps: [] },
+    { id: 'b', label: 'B', position: '220,0', appColumns: 3, appRows: 1, apps: [] },
   ]
   return {
-    version: 1,
+    version: 2,
     title: 't',
     layout: { widthMode: 'preset', maxWidth: 1200 },
     appLayout: { size: 'medium' },
@@ -35,7 +35,8 @@ describe('layout/layoutContentCap', () => {
 
   it('shouldReorganize when cap shrinks and panes overflow new width', () => {
     const prev = baseConfig({ layout: { widthMode: 'preset', maxWidth: 1600 } })
-    const next = baseConfig({ layout: { widthMode: 'preset', maxWidth: 600 } })
+    // Below NARROW_CANVAS_WIDTH_PX, effective tile preset is `small`, so extent uses small metrics.
+    const next = baseConfig({ layout: { widthMode: 'preset', maxWidth: 380 } })
     expect(shouldReorganizePanesForNarrowerLayout(prev, next)).toBe(true)
   })
 

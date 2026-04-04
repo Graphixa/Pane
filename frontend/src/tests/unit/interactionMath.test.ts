@@ -5,16 +5,15 @@ import { getPaneResizePreview } from '../../features/interaction/paneResize'
 
 describe('interaction math', () => {
   it('converts drag pointer delta into pane grid preview', () => {
-    const stepX = 184
-    const stepY = 120
-    const preview = getPaneDragPreview(3, 4, 320, -200, stepX, stepY)
-    // round(320 / 184) = 2, round(-200 / 120) = -2
-    expect(preview).toEqual({ previewGridX: 5, previewGridY: 2 })
+    const stepX = 66
+    const stepY = 94
+    const preview = getPaneDragPreview(396, 94, 320, -200, stepX, stepY)
+    expect(preview).toEqual({ previewLeftPx: 726, previewTopPx: 0 })
   })
 
   it('converts resize pointer delta into app columns/rows', () => {
-    const colStep = 64
-    const rowStep = 92
+    const colStep = 66
+    const rowStep = 94
     expect(getPaneResizePreview('right', 3, 2, 130, 100, colStep, rowStep)).toEqual({
       previewColumns: 5,
       previewRows: 2,

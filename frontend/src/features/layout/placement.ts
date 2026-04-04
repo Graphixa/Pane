@@ -1,8 +1,12 @@
 import type { PaneItem, TileSizePreset } from '../config/types'
 import { formatCoordPair } from '../../lib/coords'
 import { isValidPanePlacement } from '../interaction/collision'
+import { getAppColPitch, getAppRowPitch, getLayoutTokens } from './paneMath'
 
 const PLACEHOLDER_PANE_ID = '__placement_new__'
+
+const SEARCH_MAX_X = 3200
+const SEARCH_MAX_Y = 2400
 
 export function findNextPaneGridPosition(
   panes: PaneItem[],
@@ -10,6 +14,9 @@ export function findNextPaneGridPosition(
   newPane: Pick<PaneItem, 'appColumns' | 'appRows'>,
   opts?: { maxContentWidthPx?: number },
 ): { x: number; y: number } {
+  const tokens = getLayoutTokens(appSize)
+  const stepX = getAppColPitch(tokens)
+  const stepY = getAppRowPitch(tokens)
   const temp: PaneItem = {
     id: PLACEHOLDER_PANE_ID,
     label: 'New',
@@ -19,8 +26,8 @@ export function findNextPaneGridPosition(
     apps: [],
   }
 
-  for (let y = 0; y < 80; y++) {
-    for (let x = 0; x < 40; x++) {
+  for (let y = 0; y < SEARCH_MAX_Y; y += stepY) {
+    for (let x = 0; x < SEARCH_MAX_X; x += stepX) {
       const panesWith = [...panes, { ...temp, position: formatCoordPair(x, y) }]
       if (
         isValidPanePlacement({

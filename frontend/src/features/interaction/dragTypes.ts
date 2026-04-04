@@ -16,10 +16,10 @@ export type ActiveInteraction =
       type: 'pane-drag'
       paneId: string
       session: PointerSession
-      startGridX: number
-      startGridY: number
-      previewGridX: number
-      previewGridY: number
+      startLeftPx: number
+      startTopPx: number
+      previewLeftPx: number
+      previewTopPx: number
       spanX: number
       spanY: number
       validDrop: boolean

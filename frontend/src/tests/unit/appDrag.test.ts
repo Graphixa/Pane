@@ -4,9 +4,9 @@ import { getAppDragPreview } from '../../features/interaction/appDrag'
 
 describe('interaction/appDrag', () => {
   it('resolves pointer into clamped (col,row) with grid insets', () => {
-    const appColStep = 56
-    const appRowStep = 84
-    const gridInsetX = 8
+    const appColStep = 66
+    const appRowStep = 94
+    const gridInsetX = 12
     const gridInsetY = 16
 
     expect(
